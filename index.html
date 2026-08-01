@@ -1,36 +1,287 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>octo-rrent</title>
-  <style>
-    body { font-family: system-ui, -apple-system,Segoe UI, Roboto, "Helvetica Neue", Arial; margin: 0; padding: 2rem; background:#f7f9fb; color:#0f1724 }
-    header { display:flex; align-items:center; gap:1rem }
-    .logo { width:64px; height:64px; background:#0ea5a4; border-radius:8px; display:flex; align-items:center; justify-content:center; color:white; font-weight:700 }
-    main { margin-top:2rem; max-width:60ch }
-    a.button{ display:inline-block; margin-top:1rem; padding:.5rem .75rem; background:#0369a1;color:white;border-radius:6px; text-decoration:none }
-    footer{ margin-top:3rem; font-size:.9rem;color:#475569 }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>octo-rrent Установщик</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="octo-rrent">
+
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        body {
+            background-image: url('https://img.magnific.com/free-vector/wave-dark-gradient-background-desogn_343694-4095.jpg?semt=ais_hybrid&w=740&q=80');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            color: #ffffff;
+            font-family: system-ui, -apple-system, sans-serif;
+            overflow-x: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+        .ios-glass {
+            background: rgba(22, 22, 25, 0.45);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 
+                        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+        .ios-glass-inner {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .ios-glass-inner:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+        .perspective-container {
+            perspective: 600px;
+        }
+        #progress-interactive-card {
+            transition: transform 0.15s ease-out;
+            transform-style: preserve-3d;
+        }
+    </style>
 </head>
-<body>
-  <header>
-    <div class="logo">OR</div>
-    <div>
-      <h1 style="margin:0">octo-rrent</h1>
-      <p style="margin:.25rem 0 0 .0rem;color:#475569">Repository landing page</p>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 selection:bg-gray-700">
+
+    <div class="w-full max-w-sm ios-glass rounded-3xl p-6 flex flex-col justify-between">
+
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-xl font-bold tracking-tight text-white/90">octo-rrent</h1>
+            <button id="folder-btn" class="hidden w-9 h-9 ios-glass-inner rounded-full flex items-center justify-center hover:bg-white/15 transition-all text-white/80 cursor-pointer shadow-md" title="Открыть папку установки">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                </svg>
+            </button>
+        </div>
+
+        <div>
+            <div class="mb-4">
+                <label id="drop-zone" class="border border-dashed border-white/10 hover:border-white/30 rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all ios-glass-inner">
+                    <svg class="w-7 h-7 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    <span class="text-xs text-gray-300 text-center mb-1">Перетащите .torrent файл или <span class="text-white underline underline-offset-2">выберите</span></span>
+                    <span id="file-name" class="text-[11px] text-gray-400 mt-0.5">Только формат .torrent</span>
+                    <input type="file" id="file-input" accept=".torrent" class="hidden">
+                </label>
+            </div>
+
+            <div class="mb-4">
+                <input type="text" id="url-input" placeholder="Или введите magnet-ссылку..." class="w-full ios-glass-inner border border-white/10 focus:border-white/30 rounded-full px-4 py-2.5 text-xs text-white placeholder-gray-400 outline-none transition-colors">
+            </div>
+        </div>
+
+        <div>
+            <button id="download-btn" class="w-full bg-white/90 hover:bg-white text-black font-medium py-2.5 px-4 rounded-full transition-all cursor-pointer text-xs tracking-wide shadow-lg">
+                Начать загрузку
+            </button>
+        </div>
     </div>
-  </header>
 
-  <main>
-    <p>This is a placeholder index.html created for the <strong>INSHTEYTN/octo-rrent</strong> repository.</p>
-    <p>Replace this content with your project's documentation, demo, or frontend entrypoint.</p>
+    <div class="perspective-container w-full max-w-sm mt-4">
+        <div id="progress-container" class="w-full ios-glass rounded-3xl p-5 opacity-0 transform translate-y-3 pointer-events-none transition-all duration-300">
+            <div id="progress-interactive-card">
+                <div class="flex justify-between items-center mb-2">
+                    <span id="progress-title" class="text-xs text-gray-200 font-medium truncate max-w-[200px]">Установка игры...</span>
+                    <span id="progress-percent" class="text-xs font-mono text-gray-400">0%</span>
+                </div>
 
-    <p><a class="button" href="https://github.com/INSHTEYTN/octo-rrent" target="_blank" rel="noopener">Open repository on GitHub</a></p>
-  </main>
+                <div class="w-full bg-white/10 h-2 rounded-full overflow-hidden mb-4">
+                    <div id="progress-bar" class="bg-white h-full w-0 transition-all duration-200 rounded-full"></div>
+                </div>
 
-  <footer>
-    <p>Generated on 2026-08-01 by GitHub Copilot.</p>
-  </footer>
+                <div class="flex gap-2" id="progress-buttons">
+                    <button id="pause-btn" class="flex-1 ios-glass-inner hover:bg-white/10 text-white text-xs py-2 rounded-full transition-colors cursor-pointer border border-white/10">
+                        Пауза
+                    </button>
+                    <button id="cancel-btn" class="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs py-2 rounded-full transition-colors cursor-pointer border border-red-500/20">
+                        Отменить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-6 right-6 ios-glass text-white px-4 py-2.5 rounded-full shadow-2xl transform translate-y-20 opacity-0 transition-all duration-300 text-xs z-50">
+        Готово, Тима!
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileNameSpan = document.getElementById('file-name');
+        const urlInput = document.getElementById('url-input');
+        const downloadBtn = document.getElementById('download-btn');
+
+        const progressContainer = document.getElementById('progress-container');
+        const progressCard = document.getElementById('progress-interactive-card');
+        const progressBar = document.getElementById('progress-bar');
+        const progressPercent = document.getElementById('progress-percent');
+        const progressTitle = document.getElementById('progress-title');
+        const progressButtons = document.getElementById('progress-buttons');
+        const pauseBtn = document.getElementById('pause-btn');
+        const cancelBtn = document.getElementById('cancel-btn');
+        const folderBtn = document.getElementById('folder-btn');
+        const toast = document.getElementById('toast');
+
+        let downloadInterval = null;
+        let currentProgress = 0;
+        let isPaused = false;
+        let isCompleted = false;
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                const file = e.target.files[0];
+                if (!file.name.endsWith('.torrent')) {
+                    showToast('Пожалуйста, выберите файл с расширением .torrent');
+                    fileInput.value = '';
+                    return;
+                }
+                fileNameSpan.textContent = file.name;
+                fileNameSpan.classList.add('text-gray-200');
+            }
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-white/40');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-white/40');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                if (!file.name.endsWith('.torrent')) {
+                    showToast('Разрешены только файлы .torrent, мой хороший.');
+                    return;
+                }
+                fileInput.files = files;
+                fileNameSpan.textContent = file.name;
+                fileNameSpan.classList.add('text-gray-200');
+            }
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            const hasFile = fileInput.files.length > 0;
+            const hasUrl = urlInput.value.trim().length > 0;
+
+            if (!hasFile && !hasUrl) {
+                showToast('Выберите .torrent файл или введите magnet-ссылку.');
+                return;
+            }
+
+            let rawName = hasFile ? fileInput.files[0].name.replace('.torrent', '') : 'Cyberpunk_2077_Update_v2.1';
+            progressTitle.textContent = 'Игра: ' + rawName;
+
+            isCompleted = false;
+            folderBtn.classList.add('hidden');
+            progressButtons.style.display = 'flex';
+
+            progressContainer.classList.remove('opacity-0', 'translate-y-3', 'pointer-events-none');
+
+            currentProgress = 0;
+            isPaused = false;
+            pauseBtn.textContent = 'Пауза';
+            updateProgressUI();
+
+            if (downloadInterval) clearInterval(downloadInterval);
+
+            downloadInterval = setInterval(() => {
+                if (!isPaused && !isCompleted) {
+                    currentProgress += Math.floor(Math.random() * 6) + 3;
+                    if (currentProgress >= 100) {
+                        currentProgress = 100;
+                        isCompleted = true;
+                        clearInterval(downloadInterval);
+
+                        progressButtons.style.display = 'none';
+                        folderBtn.classList.remove('hidden');
+                        showToast('Игра успешно установлена, Тима!');
+
+                        setTimeout(() => {
+                            if (isCompleted) {
+                                progressContainer.classList.add('opacity-0', 'translate-y-3', 'pointer-events-none');
+                            }
+                        }, 4000);
+                    }
+                    updateProgressUI();
+                }
+            }, 300);
+
+            showToast('Установка началась, Тима!');
+        });
+
+        pauseBtn.addEventListener('click', () => {
+            isPaused = !isPaused;
+            pauseBtn.textContent = isPaused ? 'Продолжить' : 'Пауза';
+            showToast(isPaused ? 'Загрузка приостановлена' : 'Загрузка возобновлена');
+        });
+
+        cancelBtn.addEventListener('click', () => {
+            if (downloadInterval) clearInterval(downloadInterval);
+            isCompleted = false;
+
+            progressContainer.classList.add('opacity-0', 'translate-y-3', 'pointer-events-none');
+
+            setTimeout(() => {
+                currentProgress = 0;
+                updateProgressUI();
+                fileInput.value = '';
+                fileNameSpan.textContent = 'Только формат .torrent';
+                fileNameSpan.classList.remove('text-gray-200');
+                urlInput.value = '';
+                folderBtn.classList.add('hidden');
+            }, 300);
+
+            showToast('Загрузка отменена');
+        });
+
+        folderBtn.addEventListener('click', () => {
+            showToast('Папка игры открыта в проводнике');
+        });
+
+        function updateProgressUI() {
+            progressBar.style.width = currentProgress + '%';
+            progressPercent.textContent = currentProgress + '%';
+        }
+
+        progressContainer.addEventListener('mousemove', (e) => {
+            const rect = progressContainer.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const width = rect.width;
+            const centerX = x / width - 0.5;
+            const rotateY = centerX * 15; 
+            const rotateX = -((e.clientY - rect.top) / rect.height - 0.5) * 10;
+
+            progressCard.style.transform = `rotateY(${rotateY}deg) rotateX(${rotateX}deg) scale(1.02)`;
+        });
+
+        progressContainer.addEventListener('mouseleave', () => {
+            progressCard.style.transform = 'rotateY(0deg) rotateX(0deg) scale(1)';
+        });
+
+        function showToast(message) {
+            toast.textContent = message;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+    </script>
 </body>
 </html>
