@@ -1,287 +1,4495 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>octo-rrent Установщик</title>
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="octo-rrent">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>ROYAL HOLD'EM 3D — Техасский Холдем</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <style>
-        body {
-            background-image: url('https://img.magnific.com/free-vector/wave-dark-gradient-background-desogn_343694-4095.jpg?semt=ais_hybrid&w=740&q=80');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            color: #ffffff;
-            font-family: system-ui, -apple-system, sans-serif;
-            overflow-x: hidden;
-            position: fixed;
-            width: 100%;
-            height: 100%;
-        }
-        .ios-glass {
-            background: rgba(22, 22, 25, 0.45);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 
-                        inset 0 1px 0 rgba(255, 255, 255, 0.1);
-        }
-        .ios-glass-inner {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-        }
-        .ios-glass-inner:hover {
-            background: rgba(255, 255, 255, 0.06);
-        }
-        .perspective-container {
-            perspective: 600px;
-        }
-        #progress-interactive-card {
-            transition: transform 0.15s ease-out;
-            transform-style: preserve-3d;
-        }
-    </style>
+<!-- Внешние библиотеки через CDN (UMD-версии для надёжной работы даже при открытии через file://) -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+<style>
+/* ==========================================================================
+   БАЗОВЫЕ ПЕРЕМЕННЫЕ И СБРОС СТИЛЕЙ
+   ========================================================================== */
+:root {
+  --gold: #d4af37;
+  --gold-light: #f6e08c;
+  --gold-dark: #8e6f18;
+  --emerald: #0d3b2e;
+  --emerald-dark: #061b15;
+  --bg-dark: #070b0a;
+  --glass: rgba(10, 18, 16, 0.78);
+  --glass-border: rgba(212, 175, 55, 0.35);
+  --danger: #d94141;
+  --success: #28a745;
+  --info: #2e86de;
+  --text-main: #f4f1ea;
+  --text-muted: #a6b3ad;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-dark);
+  color: var(--text-main);
+  font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  touch-action: none;
+}
+
+/* ==========================================================================
+   КОРНЕВОЙ КОНТЕЙНЕР С ПРИНУДИТЕЛЬНОЙ ГОРИЗОНТАЛЬНОЙ ОРИЕНТАЦИЕЙ
+   ========================================================================== */
+#game-root {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 35%, #122620 0%, #060a09 100%);
+}
+
+#game-root.force-landscape {
+  /* Левая часть игры оказывается наверху телефона (у динамика), правая — внизу */
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+#canvas-container {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+#canvas-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ==========================================================================
+   ОБЩИЕ КОМПОНЕНТЫ ИНТЕРФЕЙСА
+   ========================================================================== */
+.screen-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+
+.screen-layer.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.gold-text {
+  background: linear-gradient(135deg, #fff1b8 0%, #d4af37 45%, #a17c1a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: linear-gradient(180deg, rgba(30, 44, 39, 0.92), rgba(14, 22, 19, 0.96));
+  color: var(--text-main);
+  font-weight: 600;
+  font-size: clamp(11px, 1.4vw, 14px);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.2s ease, border-color 0.2s ease, filter 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--gold-light);
+  box-shadow: 0 0 14px rgba(212, 175, 55, 0.35);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.7);
+}
+
+.btn-gold {
+  background: linear-gradient(180deg, #ecd073 0%, #c69b27 55%, #8f6b12 100%);
+  color: #161105;
+  border-color: #fff2bd;
+  font-weight: 800;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.btn-danger {
+  background: linear-gradient(180deg, #e05252 0%, #a82424 100%);
+  border-color: #ff8e8e;
+  color: #fff;
+}
+
+.btn-success {
+  background: linear-gradient(180deg, #34c759 0%, #1c7c35 100%);
+  border-color: #7df59b;
+  color: #fff;
+}
+
+.btn-info {
+  background: linear-gradient(180deg, #3b95f0 0%, #1d5ca3 100%);
+  border-color: #8cc4ff;
+  color: #fff;
+}
+
+.btn-icon {
+  width: clamp(32px, 4.2vh, 40px);
+  height: clamp(32px, 4.2vh, 40px);
+  padding: 0;
+  border-radius: 50%;
+  font-size: clamp(14px, 2vh, 18px);
+}
+
+.glass-panel {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* ==========================================================================
+   1. ЭКРАН ЗАГРУЗКИ (PRELOADER)
+   ========================================================================== */
+#preloader {
+  z-index: 100;
+  background: radial-gradient(ellipse at center, #112921 0%, #050a08 75%);
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 2.2vh, 22px);
+  padding: 20px;
+}
+
+.club-emblem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.emblem-badge {
+  width: clamp(64px, 12vh, 96px);
+  height: clamp(64px, 12vh, 96px);
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  background: radial-gradient(circle at 35% 30%, #244a3c, #091712 75%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(30px, 6vh, 48px);
+  box-shadow: 0 0 30px rgba(212, 175, 55, 0.45), inset 0 0 18px rgba(212, 175, 55, 0.25);
+  animation: pulseEmblem 2.4s ease-in-out infinite;
+}
+
+@keyframes pulseEmblem {
+  0%, 100% { box-shadow: 0 0 22px rgba(212, 175, 55, 0.4), inset 0 0 14px rgba(212, 175, 55, 0.2); }
+  50% { box-shadow: 0 0 42px rgba(246, 224, 140, 0.75), inset 0 0 22px rgba(246, 224, 140, 0.4); }
+}
+
+.club-title {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(22px, 4.2vh, 38px);
+  letter-spacing: 3px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.club-subtitle {
+  font-size: clamp(10px, 1.6vh, 13px);
+  letter-spacing: 4px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.loader-box {
+  width: min(440px, 72%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.loader-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: clamp(11px, 1.7vh, 14px);
+  color: var(--gold-light);
+}
+
+.progress-track {
+  width: 100%;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 99px;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+}
+
+.progress-fill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #9a7416, #f7df86, #d4af37);
+  border-radius: 99px;
+  transition: width 0.25s ease;
+  box-shadow: 0 0 12px rgba(246, 224, 140, 0.7);
+}
+
+.loader-tip {
+  max-width: min(520px, 80%);
+  text-align: center;
+  font-size: clamp(11px, 1.7vh, 14px);
+  color: var(--text-muted);
+  font-style: italic;
+  min-height: 2.4em;
+  transition: opacity 0.35s ease;
+}
+
+/* ==========================================================================
+   2. ГЛАВНОЕ МЕНЮ
+   ========================================================================== */
+#main-menu {
+  z-index: 30;
+  background: linear-gradient(180deg, rgba(6, 13, 11, 0.88) 0%, rgba(7, 16, 13, 0.72) 50%, rgba(4, 9, 8, 0.92) 100%);
+  padding: clamp(10px, 2vh, 20px) clamp(14px, 2.6vw, 30px);
+  justify-content: space-between;
+}
+
+.menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.menu-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.menu-brand-icon {
+  width: clamp(36px, 5.5vh, 46px);
+  height: clamp(36px, 5.5vh, 46px);
+  border-radius: 50%;
+  border: 1.5px solid var(--gold);
+  background: radial-gradient(circle, #1e4235, #091712);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(18px, 3vh, 24px);
+}
+
+.menu-brand h1 {
+  font-family: Georgia, serif;
+  font-size: clamp(16px, 2.8vh, 26px);
+  letter-spacing: 2px;
+}
+
+.balance-widget {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  background: rgba(12, 24, 20, 0.9);
+  border: 1px solid var(--gold);
+  box-shadow: 0 0 18px rgba(212, 175, 55, 0.2);
+}
+
+.balance-label {
+  font-size: clamp(10px, 1.3vh, 12px);
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.balance-value {
+  font-size: clamp(15px, 2.4vh, 22px);
+  font-weight: 800;
+  color: var(--gold-light);
+  font-variant-numeric: tabular-nums;
+}
+
+#btn-bonus {
+  display: none;
+  animation: bonusPulse 1.5s infinite;
+}
+
+#btn-bonus.visible {
+  display: inline-flex;
+}
+
+@keyframes bonusPulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 12px rgba(46, 204, 113, 0.5); }
+  50% { transform: scale(1.05); box-shadow: 0 0 24px rgba(46, 204, 113, 0.9); }
+}
+
+.menu-actions-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Вкладки меню */
+.menu-tabs {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: clamp(4px, 1vh, 10px) 0;
+}
+
+.tab-btn {
+  padding: clamp(6px, 1.1vh, 10px) clamp(14px, 2vw, 24px);
+  border-radius: 99px;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  background: rgba(12, 22, 19, 0.7);
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: clamp(11px, 1.6vh, 14px);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-btn.active {
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.28), rgba(142, 111, 24, 0.22));
+  border-color: var(--gold);
+  color: var(--gold-light);
+  box-shadow: 0 0 14px rgba(212, 175, 55, 0.25);
+}
+
+.menu-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.tab-pane {
+  display: none;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-pane.active {
+  display: flex;
+}
+
+/* Карточки столов */
+.tables-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: clamp(8px, 1.2vw, 16px);
+  width: 100%;
+  max-width: 1080px;
+  padding: 4px;
+}
+
+.table-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(10px, 1.8vh, 18px) clamp(8px, 1vw, 14px);
+  border-radius: 14px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: linear-gradient(160deg, rgba(20, 48, 38, 0.85), rgba(8, 16, 14, 0.94));
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  min-height: clamp(145px, 34vh, 230px);
+  overflow: hidden;
+}
+
+.table-card:hover:not(.locked) {
+  transform: translateY(-4px);
+  border-color: var(--gold-light);
+  box-shadow: 0 10px 26px rgba(212, 175, 55, 0.28);
+}
+
+.table-card.locked {
+  filter: grayscale(0.75) brightness(0.6);
+  cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.table-tier {
+  font-size: clamp(10px, 1.3vh, 12px);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.table-name {
+  font-family: Georgia, serif;
+  font-size: clamp(14px, 2.2vh, 20px);
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.table-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+  font-size: clamp(10px, 1.45vh, 13px);
+  color: var(--text-muted);
+}
+
+.table-stats strong {
+  color: var(--text-main);
+}
+
+.table-buyin {
+  font-size: clamp(13px, 2vh, 18px);
+  font-weight: 800;
+  color: var(--gold-light);
+}
+
+.lock-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 8, 7, 0.62);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 10px;
+}
+
+.lock-icon {
+  font-size: clamp(22px, 4vh, 32px);
+}
+
+.lock-req {
+  font-size: clamp(10px, 1.4vh, 12px);
+  color: #f8d27a;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.65);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+/* Свой стол & Мультиплеер панели */
+.setup-panel {
+  width: min(760px, 95%);
+  padding: clamp(12px, 2.2vh, 24px);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(10px, 1.8vw, 20px);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-group label {
+  font-size: clamp(11px, 1.5vh, 13px);
+  color: var(--gold-light);
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+}
+
+.form-control {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: rgba(7, 14, 12, 0.9);
+  color: var(--text-main);
+  font-size: clamp(12px, 1.6vh, 14px);
+  outline: none;
+}
+
+.form-control:focus {
+  border-color: var(--gold-light);
+}
+
+input[type="range"] {
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
+.mp-grid {
+  width: min(860px, 96%);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(10px, 1.8vw, 20px);
+}
+
+.mp-card {
+  padding: clamp(12px, 2vh, 20px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mp-card h3 {
+  font-family: Georgia, serif;
+  font-size: clamp(14px, 2.1vh, 19px);
+  color: var(--gold-light);
+}
+
+.mp-card p {
+  font-size: clamp(10px, 1.45vh, 12.5px);
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.mp-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.menu-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: clamp(10px, 1.4vh, 12px);
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   3. ЭКРАН ЛОББИ И ОБРАТНЫЙ ОТСЧЁТ
+   ========================================================================== */
+#lobby-screen {
+  z-index: 35;
+  background: rgba(6, 12, 10, 0.92);
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.lobby-box {
+  width: min(820px, 95%);
+  max-height: 92%;
+  padding: clamp(14px, 2.4vh, 24px);
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 18px;
+  overflow-y: auto;
+}
+
+.lobby-code-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(212, 175, 55, 0.12);
+  border: 1px dashed var(--gold);
+}
+
+.lobby-code-val {
+  font-family: monospace;
+  font-size: clamp(16px, 2.8vh, 24px);
+  font-weight: 800;
+  color: var(--gold-light);
+  letter-spacing: 2px;
+}
+
+.sdp-area {
+  width: 100%;
+  height: 64px;
+  resize: none;
+  font-family: monospace;
+  font-size: 11px;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  color: #cde6da;
+}
+
+.lobby-players-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.lobby-player-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: clamp(12px, 1.7vh, 14px);
+}
+
+.badge-ready {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: rgba(40, 167, 69, 0.25);
+  border: 1px solid #34c759;
+  color: #7df59b;
+}
+
+/* Обратный отсчёт 3... 2... 1... */
+#countdown-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  background: rgba(4, 10, 8, 0.82);
+  backdrop-filter: blur(8px);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+#countdown-overlay.active {
+  display: flex;
+}
+
+#countdown-number {
+  font-family: Georgia, serif;
+  font-size: clamp(72px, 22vh, 160px);
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 0 40px rgba(212, 175, 55, 0.85);
+}
+
+#countdown-label {
+  font-size: clamp(14px, 2.5vh, 22px);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--gold-light);
+}
+
+/* ==========================================================================
+   4. ИГРОВОЙ HUD (ПОВЕРХ 3D СЦЕНЫ)
+   ========================================================================== */
+#game-hud {
+  z-index: 15;
+  pointer-events: none;
+  justify-content: space-between;
+  padding: clamp(6px, 1.2vh, 12px) clamp(10px, 1.8vw, 20px);
+}
+
+#game-hud.active {
+  pointer-events: none; /* Пропускаем клики к 3D, кроме кнопок */
+}
+
+.hud-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.hud-top > * {
+  pointer-events: auto;
+}
+
+.hud-table-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: rgba(8, 16, 13, 0.78);
+  border: 1px solid var(--glass-border);
+  font-size: clamp(10px, 1.5vh, 13px);
+}
+
+.hud-pot-banner {
+  padding: 6px 18px;
+  border-radius: 99px;
+  background: linear-gradient(180deg, rgba(22, 42, 34, 0.92), rgba(8, 17, 14, 0.94));
+  border: 1.5px solid var(--gold);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 140px;
+}
+
+.pot-label {
+  font-size: clamp(9px, 1.2vh, 11px);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+
+.pot-amount {
+  font-size: clamp(15px, 2.5vh, 22px);
+  font-weight: 800;
+  color: var(--gold-light);
+}
+
+.hud-controls-top {
+  display: flex;
+  gap: 6px;
+}
+
+.hud-left-col,
+.hud-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hud-left-col {
+  align-items: flex-start;
+}
+
+.hud-right-col {
+  align-items: flex-end;
+}
+
+/* 2D-виджеты карт дилера (слева сверху) и игрока (справа сверху) */
+.cards-2d-panel {
+  padding: 5px 8px;
+  border-radius: 10px;
+  background: rgba(8, 16, 13, 0.84);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cards-2d-title {
+  font-size: clamp(9px, 1.2vh, 11px);
+  color: var(--gold-light);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 700;
+}
+
+.cards-2d-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.card-2d {
+  width: clamp(30px, 4.2vw, 42px);
+  height: clamp(42px, 6vw, 58px);
+  border-radius: 5px;
+  background: linear-gradient(180deg, #ffffff 0%, #f1efe9 100%);
+  color: #18181b;
+  border: 1px solid #d4d4d8;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-weight: 800;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.card-2d.red {
+  color: #cc1f26;
+}
+
+.card-2d .c-rank {
+  font-size: clamp(12px, 1.8vh, 16px);
+}
+
+.card-2d .c-suit {
+  font-size: clamp(13px, 2vh, 18px);
+  margin-top: 1px;
+}
+
+.card-2d.empty {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(212, 175, 55, 0.35);
+  color: rgba(212, 175, 55, 0.3);
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.card-2d.folded {
+  opacity: 0.42;
+  filter: grayscale(0.8);
+}
+
+.card-2d.win-glow {
+  border-color: #f6e08c;
+  box-shadow: 0 0 12px rgba(246, 224, 140, 0.95);
+  transform: translateY(-2px);
+}
+
+/* 2D-метки игроков, привязанные к 3D-позициям */
+#seats-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.seat-badge {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: clamp(86px, 11vw, 128px);
+  padding: 5px 8px;
+  border-radius: 10px;
+  background: rgba(8, 16, 14, 0.86);
+  border: 1.5px solid rgba(212, 175, 55, 0.35);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65);
+  text-align: center;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease;
+}
+
+.seat-badge.active-turn {
+  border-color: #ffe27a;
+  box-shadow: 0 0 18px rgba(246, 224, 140, 0.75);
+}
+
+.seat-badge.folded {
+  opacity: 0.48;
+  filter: grayscale(0.7);
+}
+
+.seat-badge.winner {
+  border-color: #4cd964;
+  box-shadow: 0 0 22px rgba(76, 217, 100, 0.85);
+}
+
+.seat-name {
+  font-size: clamp(10px, 1.4vh, 12.5px);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 118px;
+  margin: 0 auto;
+}
+
+.seat-chips {
+  font-size: clamp(11px, 1.6vh, 14px);
+  font-weight: 800;
+  color: var(--gold-light);
+}
+
+.seat-action-tag {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  background: #1d5ca3;
+  color: #fff;
+  display: none;
+}
+
+.seat-action-tag.show { display: block; }
+.seat-action-tag.fold { background: #a82424; }
+.seat-action-tag.check { background: #2d6a4f; }
+.seat-action-tag.call { background: #1d5ca3; }
+.seat-action-tag.raise { background: #c69b27; color: #111; }
+.seat-action-tag.allin { background: #9b2226; border: 1px solid #ffd166; }
+
+.seat-dealer-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #fff, #d4d4d4);
+  color: #111;
+  font-weight: 900;
+  font-size: 11px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--gold);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+}
+
+.seat-dealer-btn.show { display: flex; }
+
+.seat-timer-bar {
+  height: 3px;
+  width: 0%;
+  background: linear-gradient(90deg, #4cd964, #f7df86, #e05252);
+  border-radius: 2px;
+  margin-top: 3px;
+}
+
+/* Баннер текущей руки игрока и уведомления шоудауна */
+#hand-banner {
+  position: absolute;
+  left: 50%;
+  top: 14%;
+  transform: translateX(-50%);
+  z-index: 16;
+  padding: 8px 22px;
+  border-radius: 99px;
+  background: rgba(8, 18, 15, 0.9);
+  border: 1.5px solid var(--gold);
+  font-size: clamp(12px, 2vh, 16px);
+  font-weight: 700;
+  color: var(--gold-light);
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65);
+}
+
+#hand-banner.visible {
+  opacity: 1;
+}
+
+/* Нижняя панель действий игрока */
+.hud-bottom {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.hud-bottom > * {
+  pointer-events: auto;
+}
+
+.my-hand-pill {
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(8, 16, 13, 0.85);
+  border: 1px solid var(--glass-border);
+  font-size: clamp(11px, 1.5vh, 13px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.my-hand-rank {
+  color: var(--gold-light);
+  font-weight: 800;
+}
+
+.action-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.action-bar.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.raise-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  background: rgba(8, 16, 14, 0.88);
+  border: 1px solid var(--glass-border);
+}
+
+.raise-controls input[type="range"] {
+  width: clamp(90px, 15vw, 170px);
+}
+
+.raise-amount-label {
+  min-width: 64px;
+  text-align: right;
+  font-weight: 800;
+  color: var(--gold-light);
+  font-size: clamp(12px, 1.7vh, 15px);
+}
+
+.quick-bet-btn {
+  padding: 4px 8px;
+  font-size: clamp(10px, 1.3vh, 12px);
+  border-radius: 6px;
+}
+
+.main-action-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.main-action-btns .btn {
+  min-width: clamp(78px, 11vw, 124px);
+  padding: clamp(8px, 1.5vh, 12px) clamp(12px, 1.6vw, 20px);
+  font-size: clamp(12px, 1.7vh, 15px);
+}
+
+/* ==========================================================================
+   5. МОДАЛЬНЫЕ ОКНА (ПРАВИЛА, НАСТРОЙКИ ЗВУКА, РЕЗУЛЬТАТ СТОЛА)
+   ========================================================================== */
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: rgba(4, 9, 7, 0.8);
+  backdrop-filter: blur(6px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modal-backdrop.open {
+  display: flex;
+}
+
+.modal-card {
+  width: min(780px, 94%);
+  max-height: 90%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.modal-header h2 {
+  font-family: Georgia, serif;
+  font-size: clamp(16px, 2.4vh, 22px);
+  color: var(--gold-light);
+}
+
+.modal-body {
+  padding: 14px 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: clamp(11px, 1.55vh, 13.5px);
+  line-height: 1.45;
+}
+
+/* Таблица комбинаций в правилах */
+.hands-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.hand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hand-cards-mini {
+  display: flex;
+  gap: 3px;
+}
+
+.mini-card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 34px;
+  border-radius: 4px;
+  background: #fff;
+  color: #111;
+  font-weight: 800;
+  font-size: 11px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45);
+}
+
+.mini-card.red { color: #d02020; }
+
+/* Тост-уведомления */
+#toast-container {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 8px 18px;
+  border-radius: 99px;
+  background: rgba(12, 24, 20, 0.95);
+  border: 1px solid var(--gold);
+  color: var(--gold-light);
+  font-weight: 600;
+  font-size: 13px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+  animation: toastIn 0.25s ease;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Полосы прокрутки */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+::-webkit-scrollbar-thumb { background: rgba(212,175,55,0.45); border-radius: 99px; }
+</style>
 </head>
-<body class="min-h-screen flex flex-col items-center justify-center p-4 selection:bg-gray-700">
+<body>
 
-    <div class="w-full max-w-sm ios-glass rounded-3xl p-6 flex flex-col justify-between">
+<div id="game-root">
+  <!-- 3D Canvas -->
+  <div id="canvas-container"></div>
 
-        <div class="flex justify-between items-center mb-6">
-            <h1 class="text-xl font-bold tracking-tight text-white/90">octo-rrent</h1>
-            <button id="folder-btn" class="hidden w-9 h-9 ios-glass-inner rounded-full flex items-center justify-center hover:bg-white/15 transition-all text-white/80 cursor-pointer shadow-md" title="Открыть папку установки">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
-                </svg>
-            </button>
-        </div>
+  <!-- 2D-метки игроков поверх 3D -->
+  <div id="seats-overlay"></div>
 
+  <!-- Всплывающий баннер этапа/победителя -->
+  <div id="hand-banner"></div>
+
+  <!-- Тосты -->
+  <div id="toast-container"></div>
+
+  <!-- ======================================================================
+       ЭКРАН 1: ПРЕЛОАДЕР
+       ====================================================================== -->
+  <section id="preloader" class="screen-layer active">
+    <div class="club-emblem">
+      <div class="emblem-badge">♠</div>
+      <div class="club-title gold-text">ROYAL HOLD'EM 3D</div>
+      <div class="club-subtitle">ELITE CASINO POKER CLUB</div>
+    </div>
+
+    <div class="loader-box">
+      <div class="loader-meta">
+        <span id="loader-stage">Инициализация 3D-движка...</span>
+        <span id="loader-percent">0%</span>
+      </div>
+      <div class="progress-track">
+        <div id="loader-bar" class="progress-fill"></div>
+      </div>
+    </div>
+
+    <div id="loader-tip" class="loader-tip">Совет: Позиция за столом — ваше главное преимущество. Играйте шире на баттоне!</div>
+  </section>
+
+  <!-- ======================================================================
+       ЭКРАН 2: ГЛАВНОЕ МЕНЮ
+       ====================================================================== -->
+  <section id="main-menu" class="screen-layer">
+    <header class="menu-header">
+      <div class="menu-brand">
+        <div class="menu-brand-icon">♠</div>
         <div>
-            <div class="mb-4">
-                <label id="drop-zone" class="border border-dashed border-white/10 hover:border-white/30 rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all ios-glass-inner">
-                    <svg class="w-7 h-7 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                    </svg>
-                    <span class="text-xs text-gray-300 text-center mb-1">Перетащите .torrent файл или <span class="text-white underline underline-offset-2">выберите</span></span>
-                    <span id="file-name" class="text-[11px] text-gray-400 mt-0.5">Только формат .torrent</span>
-                    <input type="file" id="file-input" accept=".torrent" class="hidden">
-                </label>
-            </div>
-
-            <div class="mb-4">
-                <input type="text" id="url-input" placeholder="Или введите magnet-ссылку..." class="w-full ios-glass-inner border border-white/10 focus:border-white/30 rounded-full px-4 py-2.5 text-xs text-white placeholder-gray-400 outline-none transition-colors">
-            </div>
+          <h1 class="gold-text">ROYAL HOLD'EM 3D</h1>
+          <div style="font-size: 11px; color: var(--text-muted);">No-Limit Texas Hold'em</div>
         </div>
+      </div>
 
+      <div class="balance-widget">
         <div>
-            <button id="download-btn" class="w-full bg-white/90 hover:bg-white text-black font-medium py-2.5 px-4 rounded-full transition-all cursor-pointer text-xs tracking-wide shadow-lg">
-                Начать загрузку
-            </button>
+          <div class="balance-label">Ваш баланс</div>
+          <div id="menu-balance" class="balance-value">$10,000</div>
         </div>
-    </div>
+        <button id="btn-bonus" class="btn btn-success">🎁 Бонус +$1,000</button>
+      </div>
 
-    <div class="perspective-container w-full max-w-sm mt-4">
-        <div id="progress-container" class="w-full ios-glass rounded-3xl p-5 opacity-0 transform translate-y-3 pointer-events-none transition-all duration-300">
-            <div id="progress-interactive-card">
-                <div class="flex justify-between items-center mb-2">
-                    <span id="progress-title" class="text-xs text-gray-200 font-medium truncate max-w-[200px]">Установка игры...</span>
-                    <span id="progress-percent" class="text-xs font-mono text-gray-400">0%</span>
-                </div>
+      <div class="menu-actions-top">
+        <button class="btn" onclick="UIManager.openModal('rules-modal')">📖 Правила</button>
+        <button class="btn" onclick="UIManager.openModal('audio-modal')">🎵 Звук</button>
+        <button class="btn btn-icon" id="btn-fullscreen-menu" title="Полный экран" onclick="OrientationManager.toggleFullscreen()">⛶</button>
+      </div>
+    </header>
 
-                <div class="w-full bg-white/10 h-2 rounded-full overflow-hidden mb-4">
-                    <div id="progress-bar" class="bg-white h-full w-0 transition-all duration-200 rounded-full"></div>
-                </div>
+    <nav class="menu-tabs">
+      <button class="tab-btn active" data-tab="tab-tables" onclick="UIManager.switchTab('tab-tables', this)">🏆 Столы казино</button>
+      <button class="tab-btn" data-tab="tab-custom" onclick="UIManager.switchTab('tab-custom', this)">🎛️ Свой стол (ИИ)</button>
+      <button class="tab-btn" data-tab="tab-multiplayer" onclick="UIManager.switchTab('tab-multiplayer', this)">🌐 Игра с друзьями (P2P)</button>
+    </nav>
 
-                <div class="flex gap-2" id="progress-buttons">
-                    <button id="pause-btn" class="flex-1 ios-glass-inner hover:bg-white/10 text-white text-xs py-2 rounded-full transition-colors cursor-pointer border border-white/10">
-                        Пауза
-                    </button>
-                    <button id="cancel-btn" class="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs py-2 rounded-full transition-colors cursor-pointer border border-red-500/20">
-                        Отменить
-                    </button>
-                </div>
+    <main class="menu-content">
+      <!-- Вкладка 1: Столы с лимитами -->
+      <div id="tab-tables" class="tab-pane active">
+        <div id="tables-grid" class="tables-grid"></div>
+      </div>
+
+      <!-- Вкладка 2: Свой столик (кастомная игра с ИИ) -->
+      <div id="tab-custom" class="tab-pane">
+        <div class="glass-panel setup-panel">
+          <div class="form-group">
+            <label>Ваше имя за столом</label>
+            <input type="text" id="custom-player-name" class="form-control" value="Игрок" maxlength="14">
+          </div>
+          <div class="form-group">
+            <label>Соперников ИИ <span id="custom-ai-count-val">5 (всего 6 мест)</span></label>
+            <input type="range" id="custom-ai-count" min="2" max="8" value="5">
+          </div>
+          <div class="form-group">
+            <label>Блайнды (SB / BB)</label>
+            <select id="custom-blinds" class="form-control">
+              <option value="10,20">$10 / $20</option>
+              <option value="25,50" selected>$25 / $50</option>
+              <option value="50,100">$50 / $100</option>
+              <option value="100,200">$100 / $200</option>
+              <option value="250,500">$250 / $500</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Стартовый стек</label>
+            <select id="custom-stack" class="form-control">
+              <option value="1000">$1,000</option>
+              <option value="2500">$2,500</option>
+              <option value="5000" selected>$5,000</option>
+              <option value="10000">$10,000</option>
+              <option value="25000">$25,000</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Сложность ботов</label>
+            <select id="custom-difficulty" class="form-control">
+              <option value="easy">Новички (мягкая игра)</option>
+              <option value="medium" selected>Сбалансированные (реалистично)</option>
+              <option value="hard">Профи (агрессия и блеф)</option>
+            </select>
+          </div>
+          <div class="form-group" style="justify-content: flex-end;">
+            <button class="btn btn-gold" style="height: 40px; font-size: 15px;" onclick="UIManager.startCustomGame()">▶ Начать партию</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Вкладка 3: Мультиплеер (PeerJS Wi-Fi + Офлайн P2P SDP) -->
+      <div id="tab-multiplayer" class="tab-pane">
+        <div class="mp-grid">
+          <!-- Онлайн / Wi-Fi PeerJS -->
+          <div class="glass-panel mp-card">
+            <h3>📡 Онлайн / Wi-Fi (Код комнаты)</h3>
+            <p>Быстрое подключение друзей через WebRTC PeerJS без выделенного сервера.</p>
+            <div class="mp-row">
+              <input type="text" id="mp-name" class="form-control" placeholder="Ваш никнейм" value="Игрок" maxlength="12">
+              <select id="mp-max-players" class="form-control" style="max-width: 120px;">
+                <option value="2">2 игрока</option>
+                <option value="3">3 игрока</option>
+                <option value="4" selected>4 игрока</option>
+                <option value="6">6 игроков</option>
+              </select>
             </div>
+            <button class="btn btn-gold" onclick="NetworkManager.createOnlineRoom()">Создать комнату</button>
+            <div class="mp-row">
+              <input type="text" id="mp-join-code" class="form-control" placeholder="Код (напр. PKR-7X4K)" style="text-transform: uppercase;">
+              <button class="btn btn-info" onclick="NetworkManager.joinOnlineRoom()">Войти</button>
+            </div>
+          </div>
+
+          <!-- Офлайн P2P через SDP-ключ -->
+          <div class="glass-panel mp-card">
+            <h3>🔑 Офлайн P2P (Локальный ключ)</h3>
+            <p>Прямое соединение в локальной Wi-Fi сети / точке доступа без интернета через обмен SDP-ключом.</p>
+            <div class="mp-row">
+              <button class="btn btn-gold" style="flex:1;" onclick="NetworkManager.startManualHost()">Я Хост (Создать ключ)</button>
+              <button class="btn btn-info" style="flex:1;" onclick="NetworkManager.startManualClient()">Я Игрок (Вставить ключ)</button>
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted);">
+              Хост управляет колодой и раздаёт каждому участнику только его закрытые карты (Host-Authoritative).
+            </div>
+          </div>
         </div>
+      </div>
+    </main>
+
+    <footer class="menu-footer">
+      <span>Режим: Горизонтальный Lock (WebGL 3D)</span>
+      <span id="audio-status-hint">Джаз-лаунж: нажмите на экран для активации аудио</span>
+    </footer>
+  </section>
+
+  <!-- ======================================================================
+       ЭКРАН 3: ЛОББИ МУЛЬТИПЛЕЕРА
+       ====================================================================== -->
+  <section id="lobby-screen" class="screen-layer">
+    <div class="glass-panel lobby-box">
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <h2 class="gold-text" id="lobby-title">Лобби комнаты</h2>
+        <div id="lobby-online-block">
+          <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">Код приглашения для друзей:</div>
+          <div class="lobby-code-box">
+            <span id="lobby-code-display" class="lobby-code-val">------</span>
+            <button class="btn btn-gold" onclick="UIManager.copyText(document.getElementById('lobby-code-display').textContent)">📋 Копировать</button>
+          </div>
+        </div>
+
+        <!-- Офлайн SDP обмен ключами -->
+        <div id="lobby-manual-block" style="display:none; flex-direction:column; gap:8px;">
+          <div id="sdp-step-label" style="font-size:12px; color:var(--gold-light); font-weight:700;">Шаг 1: Скопируйте ваш ключ и передайте сопернику</div>
+          <textarea id="sdp-output" class="sdp-area" readonly placeholder="Генерация P2P-ключа..."></textarea>
+          <button class="btn btn-gold" onclick="UIManager.copyText(document.getElementById('sdp-output').value)">📋 Копировать мой ключ</button>
+          <div style="font-size:12px; color:var(--text-muted);">Вставьте ответный ключ соперника:</div>
+          <textarea id="sdp-input" class="sdp-area" placeholder="Вставьте ключ сюда..."></textarea>
+          <button class="btn btn-success" id="btn-apply-sdp" onclick="NetworkManager.applyManualSDP()">🔗 Применить ключ и соединить</button>
+        </div>
+
+        <div style="margin-top:auto; display:flex; gap:8px;">
+          <button class="btn btn-danger" onclick="NetworkManager.leaveRoom()">← Выйти из лобби</button>
+          <button class="btn btn-success" id="btn-force-start-mp" style="display:none;" onclick="NetworkManager.triggerCountdown()">Начать сейчас</button>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="color:var(--gold-light); font-size:15px;">Участники стола</h3>
+          <span id="lobby-counter" style="font-weight:800; color:#7df59b;">Игроков: 1 / 4</span>
+        </div>
+        <div id="lobby-players" class="lobby-players-list"></div>
+        <div style="margin-top:auto; font-size:11px; color:var(--text-muted); padding-top:10px;">
+          Как только все запланированные игроки подключатся, автоматически начнётся обратный отсчёт 3... 2... 1...
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Обратный отсчёт старта -->
+  <div id="countdown-overlay">
+    <div id="countdown-label">ВСЕ ИГРОКИ ГОТОВЫ — НАЧИНАЕМ!</div>
+    <div id="countdown-number" class="gold-text">3</div>
+  </div>
+
+  <!-- ======================================================================
+       ЭКРАН 4: ИГРОВОЙ HUD
+       ====================================================================== -->
+  <section id="game-hud" class="screen-layer">
+    <div class="hud-top">
+      <div class="hud-left-col">
+        <div class="hud-table-info">
+          <button class="btn btn-danger" style="padding:4px 10px; font-size:11px;" onclick="UIManager.leaveTable()">← Меню</button>
+          <div>
+            <div id="hud-table-name" style="font-weight:800; color:var(--gold-light);">Классика</div>
+            <div id="hud-blinds" style="font-size:11px; color:var(--text-muted);">Блайнды: $25 / $50</div>
+          </div>
+        </div>
+
+        <!-- 2D-отображение открытых карт дилера (на столе) слева сверху -->
+        <div class="cards-2d-panel" id="hud-board-cards-panel">
+          <div class="cards-2d-title">Карты дилера (стол)</div>
+          <div class="cards-2d-row" id="hud-board-2d-cards"></div>
+        </div>
+      </div>
+
+      <div class="hud-pot-banner">
+        <div class="pot-label" id="hud-street-label">ОЖИДАНИЕ</div>
+        <div class="pot-amount" id="hud-pot-amount">$0</div>
+      </div>
+
+      <div class="hud-right-col">
+        <div class="hud-controls-top">
+          <button class="btn btn-icon" title="Правила" onclick="UIManager.openModal('rules-modal')">📖</button>
+          <button class="btn btn-icon" title="Звук" onclick="UIManager.openModal('audio-modal')">🎵</button>
+          <button class="btn btn-icon" id="btn-mute-quick" title="Отключить звук" onclick="AudioEngine.toggleMute()">🔊</button>
+          <button class="btn btn-icon" title="Полный экран" onclick="OrientationManager.toggleFullscreen()">⛶</button>
+        </div>
+
+        <!-- 2D-отображение карт игрока справа сверху под кнопками -->
+        <div class="cards-2d-panel" id="hud-my-cards-panel" style="align-items:flex-end;">
+          <div class="cards-2d-title">Мои карты</div>
+          <div class="cards-2d-row" id="hud-my-2d-cards"></div>
+        </div>
+      </div>
     </div>
 
-    <div id="toast" class="fixed bottom-6 right-6 ios-glass text-white px-4 py-2.5 rounded-full shadow-2xl transform translate-y-20 opacity-0 transition-all duration-300 text-xs z-50">
-        Готово, Тима!
+    <div class="hud-bottom">
+      <div class="my-hand-pill">
+        <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase;">Ваша комбинация</span>
+        <span id="my-hand-strength" class="my-hand-rank">—</span>
+      </div>
+
+      <div id="action-bar" class="action-bar">
+        <div class="raise-controls" id="raise-controls">
+          <button class="btn quick-bet-btn" onclick="UIManager.setQuickBet('half')">1/2 Пота</button>
+          <button class="btn quick-bet-btn" onclick="UIManager.setQuickBet('pot')">Пот</button>
+          <button class="btn quick-bet-btn" onclick="UIManager.setQuickBet('allin')">All-In</button>
+          <input type="range" id="bet-slider" min="0" max="1000" step="10" value="100" oninput="UIManager.onBetSliderChange(this.value)">
+          <span id="bet-slider-val" class="raise-amount-label">$100</span>
+        </div>
+        <div class="main-action-btns">
+          <button class="btn btn-danger" id="btn-fold" onclick="UIManager.sendHumanAction('fold')">Пас (Fold)</button>
+          <button class="btn btn-info" id="btn-call" onclick="UIManager.sendHumanAction('call')">Чек</button>
+          <button class="btn btn-gold" id="btn-raise" onclick="UIManager.sendHumanAction('raise')">Ставка</button>
+        </div>
+      </div>
     </div>
+  </section>
 
-    <script>
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
-        const fileNameSpan = document.getElementById('file-name');
-        const urlInput = document.getElementById('url-input');
-        const downloadBtn = document.getElementById('download-btn');
+  <!-- ======================================================================
+       МОДАЛЬНОЕ ОКНО: ПРАВИЛА ИГРЫ
+       ====================================================================== -->
+  <div id="rules-modal" class="modal-backdrop">
+    <div class="glass-panel modal-card">
+      <div class="modal-header">
+        <h2>📖 Правила Техасского Холдема</h2>
+        <button class="btn btn-icon" onclick="UIManager.closeModal('rules-modal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="padding: 10px 14px; border-radius: 10px; background: rgba(212, 175, 55, 0.12); border: 1px solid var(--gold); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+          <span>Игра сделана разработчиком: <strong style="color:var(--gold-light);">NVR</strong></span>
+          <a href="https://t.me/IIlllIIlIIIIllllIIl" target="_blank" rel="noopener noreferrer" style="color: #70c4ff; font-weight: 700; text-decoration: none; border-bottom: 1px dashed #70c4ff;">✈️ https://t.me/IIlllIIlIIIIllllIIl</a>
+        </div>
+        <div>
+          <strong style="color:var(--gold-light);">Этапы раздачи:</strong>
+          <b>Префлоп</b> (каждому по 2 закрытые карты, малый блайнд SB и большой блайнд BB делают обязательные ставки) →
+          <b>Флоп</b> (3 общие карты на стол) →
+          <b>Тёрн</b> (4-я карта) →
+          <b>Ривер</b> (5-я карта) →
+          <b>Шоудаун</b> (вскрытие и сравнение лучших 5-карточных комбинаций). Кнопка <b>D</b> (Дилер) смещается по часовой стрелке после каждой раздачи.
+        </div>
+        <div>
+          <strong style="color:var(--gold-light);">Управление:</strong>
+          <b>Пас (Fold)</b> — сбросить карты; <b>Чек (Check)</b> — пропустить ход без ставки; <b>Колл (Call)</b> — уравнять текущую ставку; <b>Ставка / Рейз (Bet / Raise)</b> — повысить ставку ползунком или быстрыми кнопками (1/2 Пота, Пот, All-In).
+        </div>
+        <strong style="color:var(--gold-light);">Старшинство комбинаций (от высшей к низшей):</strong>
+        <div class="hands-grid" id="rules-hands-grid"></div>
+      </div>
+    </div>
+  </div>
 
-        const progressContainer = document.getElementById('progress-container');
-        const progressCard = document.getElementById('progress-interactive-card');
-        const progressBar = document.getElementById('progress-bar');
-        const progressPercent = document.getElementById('progress-percent');
-        const progressTitle = document.getElementById('progress-title');
-        const progressButtons = document.getElementById('progress-buttons');
-        const pauseBtn = document.getElementById('pause-btn');
-        const cancelBtn = document.getElementById('cancel-btn');
-        const folderBtn = document.getElementById('folder-btn');
-        const toast = document.getElementById('toast');
+  <!-- ======================================================================
+       МОДАЛЬНОЕ ОКНО: АУДИО И МУЗЫКА
+       ====================================================================== -->
+  <div id="audio-modal" class="modal-backdrop">
+    <div class="glass-panel modal-card" style="max-width: 420px;">
+      <div class="modal-header">
+        <h2>🎵 Настройки звука</h2>
+        <button class="btn btn-icon" onclick="UIManager.closeModal('audio-modal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Джаз-музыка казино <span id="vol-music-val">45%</span></label>
+          <input type="range" id="vol-music" min="0" max="100" value="45" oninput="AudioEngine.setMusicVolume(this.value / 100)">
+        </div>
+        <div class="form-group">
+          <label>Звуковые эффекты (карты, фишки) <span id="vol-sfx-val">75%</span></label>
+          <input type="range" id="vol-sfx" min="0" max="100" value="75" oninput="AudioEngine.setSfxVolume(this.value / 100)">
+        </div>
+        <button class="btn btn-gold" onclick="AudioEngine.toggleMute()">🔇 Включить / Отключить весь звук</button>
+      </div>
+    </div>
+  </div>
 
-        let downloadInterval = null;
-        let currentProgress = 0;
-        let isPaused = false;
-        let isCompleted = false;
+  <!-- ======================================================================
+       МОДАЛЬНОЕ ОКНО: ЗАВЕРШЕНИЕ / ДОКУПКА ЗА СТОЛОМ
+       ====================================================================== -->
+  <div id="endgame-modal" class="modal-backdrop">
+    <div class="glass-panel modal-card" style="max-width: 440px; text-align:center;">
+      <div class="modal-header">
+        <h2 id="endgame-title">Партия завершена</h2>
+        <button class="btn btn-icon" onclick="UIManager.closeModal('endgame-modal')">✕</button>
+      </div>
+      <div class="modal-body" style="align-items:center;">
+        <p id="endgame-desc" style="color:var(--text-muted);"></p>
+        <div style="display:flex; gap:10px; margin-top:6px;">
+          <button class="btn btn-gold" id="btn-endgame-action" onclick="UIManager.handleEndgameAction()">Продолжить</button>
+          <button class="btn" onclick="UIManager.leaveTable()">В главное меню</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                const file = e.target.files[0];
-                if (!file.name.endsWith('.torrent')) {
-                    showToast('Пожалуйста, выберите файл с расширением .torrent');
-                    fileInput.value = '';
-                    return;
-                }
-                fileNameSpan.textContent = file.name;
-                fileNameSpan.classList.add('text-gray-200');
+<script>
+/* ============================================================================
+   ROYAL HOLD'EM 3D — ПОЛНАЯ АРХИТЕКТУРА
+   Секции:
+   1. OrientationManager — принудительный Landscape Lock (левая сторона у камеры)
+   2. AudioEngine        — процедурный джаз-синтезатор и звуковые эффекты
+   3. PokerEngine        — полная логика Холдема, оценка рук, Side Pots
+   4. AIPlayer           — умный ИИ с профилями, блефом и оценкой шансов
+   5. Scene3D            — 3D-стол, девушка-дилер (GLTF + процедурный фоллбэк),
+                           3D-карты и 3D-фишки с GSAP-анимациями
+   6. NetworkManager     — P2P-мультиплеер (PeerJS + офлайн WebRTC SDP)
+   7. UIManager          — прелоадер, меню, экономика, лобби, HUD и правила
+   ============================================================================ */
+
+'use strict';
+
+/* ============================================================================
+   1. OrientationManager — ПРИНУДИТЕЛЬНАЯ ГОРИЗОНТАЛЬНАЯ ОРИЕНТАЦИЯ
+   ============================================================================ */
+const OrientationManager = (() => {
+  const root = document.getElementById('game-root');
+  let isRotated = false;
+  let logicalWidth = window.innerWidth;
+  let logicalHeight = window.innerHeight;
+
+  function updateLayout() {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    if (vw < vh) {
+      // Портретный экран -> принудительно поворачиваем на +90° (левый край наверху у камеры)
+      isRotated = true;
+      logicalWidth = vh;
+      logicalHeight = vw;
+      root.classList.add('force-landscape');
+    } else {
+      isRotated = false;
+      logicalWidth = vw;
+      logicalHeight = vh;
+      root.classList.remove('force-landscape');
+    }
+
+    root.style.width = `${logicalWidth}px`;
+    root.style.height = `${logicalHeight}px`;
+
+    if (typeof Scene3D !== 'undefined' && Scene3D.resize) {
+      Scene3D.resize(logicalWidth, logicalHeight);
+    }
+  }
+
+  // Пересчёт координат касания/клика в локальные координаты повёрнутого контейнера
+  function mapPointerToLogical(clientX, clientY) {
+    if (!isRotated) {
+      return { x: clientX, y: clientY };
+    }
+    // При rotate(90deg) по часовой стрелке:
+    // screen Y -> local X, (viewportWidth - screen X) -> local Y
+    return {
+      x: clientY,
+      y: window.innerWidth - clientX
+    };
+  }
+
+  async function toggleFullscreen() {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        if (screen.orientation && screen.orientation.lock) {
+          await screen.orientation.lock('landscape-primary').catch(() => {
+            screen.orientation.lock('landscape').catch(() => {});
+          });
+        }
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      // На iOS Safari Fullscreen API ограничен — работает CSS-фоллбэк rotate(90deg)
+    }
+    setTimeout(updateLayout, 150);
+  }
+
+  function init() {
+    updateLayout();
+    window.addEventListener('resize', updateLayout);
+    window.addEventListener('orientationchange', () => setTimeout(updateLayout, 120));
+  }
+
+  return {
+    init,
+    updateLayout,
+    toggleFullscreen,
+    mapPointerToLogical,
+    getSize: () => ({ width: logicalWidth, height: logicalHeight, isRotated })
+  };
+})();
+
+/* ============================================================================
+   2. AudioEngine — ПРОЦЕДУРНЫЙ ДЖАЗ-ЛАУНЖ И ЗВУКОВЫЕ ЭФФЕКТЫ (WEB AUDIO API)
+   ============================================================================ */
+const AudioEngine = (() => {
+  let ctx = null;
+  let masterGain = null;
+  let musicGain = null;
+  let sfxGain = null;
+  let musicVolume = 0.45;
+  let sfxVolume = 0.75;
+  let muted = false;
+  let jazzTimer = null;
+  let jazzStep = 0;
+  let started = false;
+
+  // Джазовая прогрессия ii7 - V9 - Imaj7 - VI7 в F-мажоре (частоты в Гц)
+  const CHORDS = [
+    [196.00, 233.08, 293.66, 349.23, 440.00], // Gm9
+    [130.81, 233.08, 293.66, 329.63, 440.00], // C13
+    [174.61, 220.00, 261.63, 329.63, 392.00], // Fmaj9
+    [146.83, 220.00, 261.63, 311.13, 369.99]  // D7b9
+  ];
+  const BASS_LINE = [
+    98.00, 116.54, 146.83, 138.59,
+    130.81, 164.81, 196.00, 185.00,
+    174.61, 164.81, 146.83, 130.81,
+    146.83, 174.61, 196.00, 220.00
+  ];
+
+  function ensureContext() {
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      ctx = new AC();
+      masterGain = ctx.createGain();
+      musicGain = ctx.createGain();
+      sfxGain = ctx.createGain();
+
+      musicGain.gain.value = musicVolume;
+      sfxGain.gain.value = sfxVolume;
+      masterGain.gain.value = muted ? 0 : 1;
+
+      musicGain.connect(masterGain);
+      sfxGain.connect(masterGain);
+      masterGain.connect(ctx.destination);
+    }
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+    if (!started) {
+      started = true;
+      startJazzLoop();
+      const hint = document.getElementById('audio-status-hint');
+      if (hint) hint.textContent = 'Джаз-лаунж: активно ♪';
+    }
+    return true;
+  }
+
+  function startJazzLoop() {
+    if (jazzTimer) return;
+    const beatMs = 680; // Спокойный лаунж-темп ~88 BPM
+    jazzTimer = setInterval(() => {
+      if (!ctx || ctx.state !== 'running' || muted || musicVolume <= 0.01) return;
+      const now = ctx.currentTime;
+      const bar = Math.floor(jazzStep / 4) % CHORDS.length;
+      const beat = jazzStep % 4;
+
+      // 1. Электропиано Rhodes на 1-ю и синкопированную 3-ю долю
+      if (beat === 0 || beat === 2) {
+        const chord = CHORDS[bar];
+        const dur = beat === 0 ? 1.5 : 1.1;
+        chord.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
+          osc.frequency.setValueAtTime(freq, now);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.linearRampToValueAtTime(0.042, now + 0.04 + idx * 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + dur);
+          osc.connect(gain);
+          gain.connect(musicGain);
+          osc.start(now);
+          osc.stop(now + dur + 0.05);
+        });
+      }
+
+      // 2. Шагающий контрабас
+      const bassFreq = BASS_LINE[jazzStep % BASS_LINE.length];
+      const bassOsc = ctx.createOscillator();
+      const bassFilter = ctx.createBiquadFilter();
+      const bassGain = ctx.createGain();
+      bassOsc.type = 'triangle';
+      bassOsc.frequency.setValueAtTime(bassFreq, now);
+      bassFilter.type = 'lowpass';
+      bassFilter.frequency.setValueAtTime(340, now);
+      bassGain.gain.setValueAtTime(0.001, now);
+      bassGain.gain.linearRampToValueAtTime(0.16, now + 0.025);
+      bassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      bassOsc.connect(bassFilter);
+      bassFilter.connect(bassGain);
+      bassGain.connect(musicGain);
+      bassOsc.start(now);
+      bassOsc.stop(now + 0.6);
+
+      // 3. Мягкая джазовая щётка / райд
+      playBrush(now, beat === 1 || beat === 3 ? 0.035 : 0.018);
+
+      jazzStep++;
+    }, beatMs);
+  }
+
+  function playBrush(time, vol) {
+    const bufferSize = ctx.sampleRate * 0.07;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 5200;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(vol, time);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.07);
+    noise.connect(filter);
+    filter.connect(g);
+    g.connect(musicGain);
+    noise.start(time);
+  }
+
+  function playNoiseBurst(duration, hpFreq, lpFreq, vol) {
+    if (!ensureContext() || muted) return;
+    const now = ctx.currentTime;
+    const len = Math.floor(ctx.sampleRate * duration);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      ch[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.35));
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = hpFreq;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = lpFreq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(vol, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    src.connect(hp);
+    hp.connect(lp);
+    lp.connect(g);
+    g.connect(sfxGain);
+    src.start(now);
+  }
+
+  function playTone(freq, type, duration, vol, delay = 0, slideTo = null) {
+    if (!ensureContext() || muted) return;
+    const now = ctx.currentTime + delay;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.linearRampToValueAtTime(vol, now + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+    osc.connect(g);
+    g.connect(sfxGain);
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
+  }
+
+  // Набор звуковых эффектов
+  const sfx = {
+    shuffle() {
+      for (let i = 0; i < 6; i++) {
+        setTimeout(() => playNoiseBurst(0.045, 900, 3800, 0.22), i * 48);
+      }
+    },
+    cardDeal() {
+      playNoiseBurst(0.09, 1200, 5200, 0.26);
+    },
+    cardFlip() {
+      playNoiseBurst(0.06, 1800, 6400, 0.22);
+      playTone(620, 'triangle', 0.05, 0.08, 0, 920);
+    },
+    chipClink() {
+      playTone(2650 + Math.random() * 350, 'sine', 0.06, 0.16);
+      playTone(4100 + Math.random() * 400, 'triangle', 0.045, 0.11, 0.015);
+    },
+    chipPot() {
+      for (let i = 0; i < 5; i++) {
+        setTimeout(() => sfx.chipClink(), i * 45);
+      }
+    },
+    check() {
+      playTone(150, 'sine', 0.08, 0.35, 0, 75);
+      playTone(140, 'sine', 0.08, 0.28, 0.11, 70);
+    },
+    fold() {
+      playNoiseBurst(0.14, 400, 2100, 0.2);
+      playTone(220, 'sine', 0.12, 0.1, 0, 120);
+    },
+    timerTick() {
+      playTone(880, 'sine', 0.04, 0.12);
+    },
+    countdown(final = false) {
+      if (final) {
+        playTone(880, 'triangle', 0.35, 0.28);
+        playTone(1318.5, 'sine', 0.45, 0.22, 0.08);
+      } else {
+        playTone(523.25, 'triangle', 0.18, 0.24);
+      }
+    },
+    winFanfare() {
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((n, i) => playTone(n, 'triangle', 0.38, 0.22, i * 0.09));
+      setTimeout(() => sfx.chipPot(), 220);
+    },
+    bonus() {
+      [587.33, 739.99, 880, 1174.66].forEach((n, i) => playTone(n, 'sine', 0.28, 0.2, i * 0.07));
+    }
+  };
+
+  function setMusicVolume(v) {
+    musicVolume = Math.max(0, Math.min(1, v));
+    if (musicGain) musicGain.gain.value = musicVolume;
+    const el = document.getElementById('vol-music-val');
+    if (el) el.textContent = `${Math.round(musicVolume * 100)}%`;
+  }
+
+  function setSfxVolume(v) {
+    sfxVolume = Math.max(0, Math.min(1, v));
+    if (sfxGain) sfxGain.gain.value = sfxVolume;
+    const el = document.getElementById('vol-sfx-val');
+    if (el) el.textContent = `${Math.round(sfxVolume * 100)}%`;
+  }
+
+  function toggleMute() {
+    muted = !muted;
+    if (masterGain) masterGain.gain.value = muted ? 0 : 1;
+    const btn = document.getElementById('btn-mute-quick');
+    if (btn) btn.textContent = muted ? '🔇' : '🔊';
+    UIManager.toast(muted ? 'Звук отключён' : 'Звук включён');
+  }
+
+  // Активация Web Audio при первом клике/касании
+  window.addEventListener('pointerdown', () => ensureContext(), { once: false, passive: true });
+
+  return { ensureContext, sfx, setMusicVolume, setSfxVolume, toggleMute };
+})();
+
+/* ============================================================================
+   3. PokerEngine — ПОЛНАЯ ЛОГИКА ТЕХАССКОГО ХОЛДЕМА, ОЦЕНКА РУК И SIDE POTS
+   ============================================================================ */
+const PokerEngine = (() => {
+  const SUITS = ['s', 'h', 'd', 'c']; // Пики, Черви, Бубны, Трефы
+  const RANKS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]; // 11=J, 12=Q, 13=K, 14=A
+  const HAND_NAMES = [
+    'Старшая карта',
+    'Пара',
+    'Две пары',
+    'Сет (Тройка)',
+    'Стрит',
+    'Флеш',
+    'Фулл-Хаус',
+    'Каре',
+    'Стрит-Флеш',
+    'Роял-Флеш'
+  ];
+
+  // Создание и тасование колоды Фишера-Йетса
+  function createDeck() {
+    const deck = [];
+    for (const s of SUITS) {
+      for (const r of RANKS) {
+        deck.push({ rank: r, suit: s, id: `${r}${s}` });
+      }
+    }
+    for (let i = deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
+  }
+
+  // Точная оценка 5 карт -> { score, category, name, cards }
+  function evaluate5(cards) {
+    const sorted = [...cards].sort((a, b) => b.rank - a.rank);
+    const ranks = sorted.map(c => c.rank);
+    const isFlush = sorted.every(c => c.suit === sorted[0].suit);
+
+    // Проверка стрита (включая A-2-3-4-5)
+    let isStraight = false;
+    let straightHigh = ranks[0];
+    const uniqueRanks = [...new Set(ranks)];
+    if (uniqueRanks.length === 5) {
+      if (ranks[0] - ranks[4] === 4) {
+        isStraight = true;
+        straightHigh = ranks[0];
+      } else if (ranks[0] === 14 && ranks[1] === 5 && ranks[2] === 4 && ranks[3] === 3 && ranks[4] === 2) {
+        isStraight = true;
+        straightHigh = 5;
+      }
+    }
+
+    // Подсчёт повторений номиналов
+    const counts = {};
+    for (const r of ranks) counts[r] = (counts[r] || 0) + 1;
+    const groups = Object.entries(counts)
+      .map(([r, c]) => ({ rank: Number(r), count: c }))
+      .sort((a, b) => (b.count - a.count) || (b.rank - a.rank));
+
+    let category = 0;
+    let tiebreakers = [];
+
+    if (isStraight && isFlush) {
+      category = straightHigh === 14 ? 9 : 8;
+      tiebreakers = [straightHigh];
+    } else if (groups[0].count === 4) {
+      category = 7;
+      tiebreakers = [groups[0].rank, groups[1].rank];
+    } else if (groups[0].count === 3 && groups[1].count === 2) {
+      category = 6;
+      tiebreakers = [groups[0].rank, groups[1].rank];
+    } else if (isFlush) {
+      category = 5;
+      tiebreakers = ranks;
+    } else if (isStraight) {
+      category = 4;
+      tiebreakers = [straightHigh];
+    } else if (groups[0].count === 3) {
+      category = 3;
+      tiebreakers = [groups[0].rank, groups[1].rank, groups[2].rank];
+    } else if (groups[0].count === 2 && groups[1].count === 2) {
+      category = 2;
+      tiebreakers = [groups[0].rank, groups[1].rank, groups[2].rank];
+    } else if (groups[0].count === 2) {
+      category = 1;
+      tiebreakers = [groups[0].rank, groups[1].rank, groups[2].rank, groups[3].rank];
+    } else {
+      category = 0;
+      tiebreakers = ranks;
+    }
+
+    // Кодирование ранга руки по основанию 15 для однозначного сравнения кикеров
+    let score = category * Math.pow(15, 5);
+    for (let i = 0; i < 5; i++) {
+      score += (tiebreakers[i] || 0) * Math.pow(15, 4 - i);
+    }
+
+    return {
+      score,
+      category,
+      name: HAND_NAMES[category],
+      cards: sorted
+    };
+  }
+
+  // Выбор лучшей 5-карточной комбинации из 5..7 карт
+  function evaluateBestHand(cards) {
+    if (!cards || cards.length < 2) return { score: 0, category: 0, name: '—', cards: [] };
+    if (cards.length < 5) {
+      // Префлоп-оценка пары / старшей карты
+      const sorted = [...cards].sort((a, b) => b.rank - a.rank);
+      if (sorted[0].rank === sorted[1].rank) {
+        return { score: 1000 + sorted[0].rank, category: 1, name: 'Карманная пара', cards: sorted };
+      }
+      return { score: sorted[0].rank, category: 0, name: 'Старшая карта', cards: sorted };
+    }
+    let best = null;
+    const n = cards.length;
+    for (let a = 0; a < n - 4; a++) {
+      for (let b = a + 1; b < n - 3; b++) {
+        for (let c = b + 1; c < n - 2; c++) {
+          for (let d = c + 1; d < n - 1; d++) {
+            for (let e = d + 1; e < n; e++) {
+              const res = evaluate5([cards[a], cards[b], cards[c], cards[d], cards[e]]);
+              if (!best || res.score > best.score) best = res;
             }
-        });
+          }
+        }
+      }
+    }
+    return best;
+  }
 
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, (e) => {
-                e.preventDefault();
-                dropZone.classList.add('border-white/40');
-            }, false);
-        });
+  // Расчёт основного и побочных банков (Side Pots)
+  function computeSidePots(players) {
+    const contributors = players.filter(p => p.totalContribution > 0);
+    const levels = [...new Set(contributors.map(p => p.totalContribution))].sort((a, b) => a - b);
+    const pots = [];
+    let prev = 0;
 
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, (e) => {
-                e.preventDefault();
-                dropZone.classList.remove('border-white/40');
-            }, false);
-        });
+    for (const lvl of levels) {
+      const slice = lvl - prev;
+      if (slice <= 0) continue;
+      const inSlice = contributors.filter(p => p.totalContribution >= lvl);
+      const amount = slice * inSlice.length;
+      const eligible = inSlice.filter(p => !p.folded);
+      if (pots.length > 0 && eligible.length === pots[pots.length - 1].eligible.length &&
+          eligible.every((p, idx) => p.id === pots[pots.length - 1].eligible[idx].id)) {
+        pots[pots.length - 1].amount += amount;
+      } else {
+        pots.push({ amount, eligible });
+      }
+      prev = lvl;
+    }
+    return pots;
+  }
 
-        dropZone.addEventListener('drop', (e) => {
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                const file = files[0];
-                if (!file.name.endsWith('.torrent')) {
-                    showToast('Разрешены только файлы .torrent, мой хороший.');
-                    return;
-                }
-                fileInput.files = files;
-                fileNameSpan.textContent = file.name;
-                fileNameSpan.classList.add('text-gray-200');
-            }
-        });
+  // Класс игровой сессии стола
+  class TableGame {
+    constructor(config) {
+      this.mode = config.mode || 'cash'; // 'cash' | 'custom' | 'mp_host'
+      this.tableName = config.tableName || 'Стол';
+      this.sb = config.sb || 25;
+      this.bb = config.bb || 50;
+      this.difficulty = config.difficulty || 'medium';
+      this.players = config.players; // [{ id, name, chips, isHuman, isAI, personality, peerId }]
+      this.dealerIndex = Math.floor(Math.random() * this.players.length);
+      this.deck = [];
+      this.communityCards = [];
+      this.street = 'IDLE'; // PREFLOP, FLOP, TURN, RIVER, SHOWDOWN
+      this.pot = 0;
+      this.currentBet = 0;
+      this.minRaise = this.bb;
+      this.activeIndex = -1;
+      this.running = false;
+      this.turnTimerId = null;
+      this.aiTimerId = null;
+      this.onStateUpdate = config.onStateUpdate || (() => {});
+      this.onEvent = config.onEvent || (() => {});
+    }
 
-        downloadBtn.addEventListener('click', () => {
-            const hasFile = fileInput.files.length > 0;
-            const hasUrl = urlInput.value.trim().length > 0;
+    stop() {
+      this.running = false;
+      clearTimeout(this.turnTimerId);
+      clearTimeout(this.aiTimerId);
+    }
 
-            if (!hasFile && !hasUrl) {
-                showToast('Выберите .torrent файл или введите magnet-ссылку.');
-                return;
-            }
+    getActivePlayers() {
+      return this.players.filter(p => !p.eliminated && p.chips > 0);
+    }
 
-            let rawName = hasFile ? fileInput.files[0].name.replace('.torrent', '') : 'Cyberpunk_2077_Update_v2.1';
-            progressTitle.textContent = 'Игра: ' + rawName;
+    getInHandPlayers() {
+      return this.players.filter(p => !p.eliminated && !p.folded);
+    }
 
-            isCompleted = false;
-            folderBtn.classList.add('hidden');
-            progressButtons.style.display = 'flex';
+    nextSeatIndex(fromIdx, predicate) {
+      const n = this.players.length;
+      for (let i = 1; i <= n; i++) {
+        const idx = (fromIdx + i) % n;
+        if (predicate(this.players[idx], idx)) return idx;
+      }
+      return -1;
+    }
 
-            progressContainer.classList.remove('opacity-0', 'translate-y-3', 'pointer-events-none');
+    async startNextHand() {
+      if (!this.running) return;
+      clearTimeout(this.turnTimerId);
+      clearTimeout(this.aiTimerId);
 
-            currentProgress = 0;
-            isPaused = false;
-            pauseBtn.textContent = 'Пауза';
-            updateProgressUI();
+      // Отмечаем выбывших
+      this.players.forEach(p => {
+        if (p.chips <= 0) p.eliminated = true;
+      });
 
-            if (downloadInterval) clearInterval(downloadInterval);
+      const alive = this.players.filter(p => !p.eliminated);
+      const human = this.players.find(p => p.isHuman);
 
-            downloadInterval = setInterval(() => {
-                if (!isPaused && !isCompleted) {
-                    currentProgress += Math.floor(Math.random() * 6) + 3;
-                    if (currentProgress >= 100) {
-                        currentProgress = 100;
-                        isCompleted = true;
-                        clearInterval(downloadInterval);
+      if (human && human.eliminated && this.mode !== 'mp_host') {
+        this.running = false;
+        this.onEvent({ type: 'HUMAN_BUSTED' });
+        return;
+      }
 
-                        progressButtons.style.display = 'none';
-                        folderBtn.classList.remove('hidden');
-                        showToast('Игра успешно установлена, Тима!');
+      if (alive.length < 2) {
+        this.running = false;
+        this.onEvent({ type: 'TABLE_FINISHED', winner: alive[0] || null });
+        return;
+      }
 
-                        setTimeout(() => {
-                            if (isCompleted) {
-                                progressContainer.classList.add('opacity-0', 'translate-y-3', 'pointer-events-none');
-                            }
-                        }, 4000);
-                    }
-                    updateProgressUI();
-                }
-            }, 300);
+      // Сброс состояния раздачи
+      this.deck = createDeck();
+      this.communityCards = [];
+      this.pot = 0;
+      this.currentBet = 0;
+      this.minRaise = this.bb;
+      this.street = 'PREFLOP';
 
-            showToast('Установка началась, Тима!');
-        });
+      this.players.forEach(p => {
+        p.cards = [];
+        p.folded = p.eliminated;
+        p.allIn = false;
+        p.bet = 0;
+        p.totalContribution = 0;
+        p.acted = false;
+        p.lastAction = '';
+        p.isWinner = false;
+      });
 
-        pauseBtn.addEventListener('click', () => {
-            isPaused = !isPaused;
-            pauseBtn.textContent = isPaused ? 'Продолжить' : 'Пауза';
-            showToast(isPaused ? 'Загрузка приостановлена' : 'Загрузка возобновлена');
-        });
+      // Сдвигаем кнопку дилера
+      this.dealerIndex = this.nextSeatIndex(this.dealerIndex, p => !p.eliminated);
 
-        cancelBtn.addEventListener('click', () => {
-            if (downloadInterval) clearInterval(downloadInterval);
-            isCompleted = false;
+      // Определяем SB и BB (включая правило Heads-Up для 2 игроков)
+      let sbIdx, bbIdx;
+      if (alive.length === 2) {
+        sbIdx = this.dealerIndex;
+        bbIdx = this.nextSeatIndex(sbIdx, p => !p.eliminated);
+      } else {
+        sbIdx = this.nextSeatIndex(this.dealerIndex, p => !p.eliminated);
+        bbIdx = this.nextSeatIndex(sbIdx, p => !p.eliminated);
+      }
 
-            progressContainer.classList.add('opacity-0', 'translate-y-3', 'pointer-events-none');
+      this.onEvent({ type: 'HAND_START', dealerIndex: this.dealerIndex });
 
-            setTimeout(() => {
-                currentProgress = 0;
-                updateProgressUI();
-                fileInput.value = '';
-                fileNameSpan.textContent = 'Только формат .torrent';
-                fileNameSpan.classList.remove('text-gray-200');
-                urlInput.value = '';
-                folderBtn.classList.add('hidden');
-            }, 300);
+      // Постим блайнды
+      this._postChips(sbIdx, this.sb, 'SB');
+      this._postChips(bbIdx, this.bb, 'BB');
+      this.currentBet = Math.max(this.players[sbIdx].bet, this.players[bbIdx].bet);
 
-            showToast('Загрузка отменена');
-        });
+      // Раздаём по 2 карты активным игрокам
+      for (let r = 0; r < 2; r++) {
+        for (let i = 0; i < this.players.length; i++) {
+          const idx = (this.dealerIndex + 1 + i) % this.players.length;
+          const p = this.players[idx];
+          if (!p.eliminated) {
+            p.cards.push(this.deck.pop());
+          }
+        }
+      }
 
-        folderBtn.addEventListener('click', () => {
-            showToast('Папка игры открыта в проводнике');
-        });
+      this.onEvent({ type: 'DEAL_HOLE_CARDS' });
+      this.onStateUpdate(this.getSnapshot());
 
-        function updateProgressUI() {
-            progressBar.style.width = currentProgress + '%';
-            progressPercent.textContent = currentProgress + '%';
+      // Первый ход на префлопе: слева от BB (в Heads-Up — дилер/SB)
+      const firstToAct = alive.length === 2
+        ? sbIdx
+        : this.nextSeatIndex(bbIdx, p => !p.eliminated && !p.folded && !p.allIn);
+
+      await new Promise(res => setTimeout(res, 1100));
+      if (!this.running) return;
+      this._setActivePlayer(firstToAct);
+    }
+
+    _postChips(seatIdx, amount, tag) {
+      const p = this.players[seatIdx];
+      const actual = Math.min(p.chips, amount);
+      p.chips -= actual;
+      p.bet += actual;
+      p.totalContribution += actual;
+      this.pot += actual;
+      if (p.chips === 0) p.allIn = true;
+      p.lastAction = p.allIn ? 'ALL-IN' : tag;
+      this.onEvent({ type: 'CHIPS_BET', seatIdx, amount: actual });
+    }
+
+    _setActivePlayer(idx) {
+      if (!this.running) return;
+
+      // Проверяем, не пора ли закончить улицу
+      if (idx === -1 || this._isBettingRoundComplete()) {
+        this._advanceStreet();
+        return;
+      }
+
+      this.activeIndex = idx;
+      const player = this.players[idx];
+      this.onEvent({ type: 'TURN_START', seatIdx: idx });
+      this.onStateUpdate(this.getSnapshot());
+
+      if (player.isAI) {
+        const delay = 650 + Math.random() * 850;
+        this.aiTimerId = setTimeout(() => {
+          if (!this.running || this.activeIndex !== idx) return;
+          const decision = AIPlayer.decide(this, player);
+          this.handleAction(player.id, decision.action, decision.amount);
+        }, delay);
+      } else {
+        // Таймер хода для человека / удалённого игрока (25 сек)
+        clearTimeout(this.turnTimerId);
+        this.turnTimerId = setTimeout(() => {
+          if (!this.running || this.activeIndex !== idx) return;
+          const toCall = this.currentBet - player.bet;
+          this.handleAction(player.id, toCall === 0 ? 'check' : 'fold', 0);
+        }, 25000);
+      }
+    }
+
+    _isBettingRoundComplete() {
+      const inHand = this.getInHandPlayers();
+      if (inHand.length <= 1) return true;
+      const canAct = inHand.filter(p => !p.allIn);
+      if (canAct.length === 0) return true;
+      return canAct.every(p => p.acted && p.bet === this.currentBet);
+    }
+
+    handleAction(playerId, action, raiseTotal = 0) {
+      if (!this.running || this.activeIndex < 0) return false;
+      const p = this.players[this.activeIndex];
+      if (!p || p.id !== playerId) return false;
+
+      clearTimeout(this.turnTimerId);
+      clearTimeout(this.aiTimerId);
+
+      const toCall = Math.max(0, this.currentBet - p.bet);
+
+      if (action === 'fold') {
+        p.folded = true;
+        p.acted = true;
+        p.lastAction = 'FOLD';
+        this.onEvent({ type: 'PLAYER_FOLD', seatIdx: this.activeIndex });
+      } else if (action === 'check' || (action === 'call' && toCall === 0)) {
+        p.acted = true;
+        p.lastAction = 'CHECK';
+        this.onEvent({ type: 'PLAYER_CHECK', seatIdx: this.activeIndex });
+      } else if (action === 'call') {
+        const pay = Math.min(p.chips, toCall);
+        this._postChips(this.activeIndex, pay, 'CALL');
+        p.acted = true;
+      } else if (action === 'raise' || action === 'bet') {
+        const minTarget = this.currentBet === 0 ? this.bb : this.currentBet + this.minRaise;
+        let targetBet = Math.max(minTarget, Math.floor(raiseTotal));
+        const maxPossible = p.bet + p.chips;
+        if (targetBet > maxPossible) targetBet = maxPossible;
+
+        const diff = targetBet - p.bet;
+        if (diff <= 0) {
+          p.acted = true;
+          p.lastAction = 'CHECK';
+        } else {
+          const prevBet = this.currentBet;
+          const isRaise = targetBet > this.currentBet;
+          this._postChips(this.activeIndex, diff, prevBet === 0 ? 'BET' : 'RAISE');
+          if (isRaise) {
+            const raiseDelta = targetBet - prevBet;
+            if (raiseDelta >= this.minRaise) this.minRaise = raiseDelta;
+            this.currentBet = targetBet;
+            // Все остальные активные игроки должны снова ответить
+            this.players.forEach((other, i) => {
+              if (i !== this.activeIndex && !other.folded && !other.allIn) {
+                other.acted = false;
+              }
+            });
+          }
+          p.acted = true;
+        }
+      }
+
+      this.onStateUpdate(this.getSnapshot());
+
+      // Если остался 1 не сбросивший игрок — он сразу забирает банк
+      const remaining = this.getInHandPlayers();
+      if (remaining.length === 1) {
+        this._awardSingleWinner(remaining[0]);
+        return true;
+      }
+
+      if (this._isBettingRoundComplete()) {
+        this._advanceStreet();
+      } else {
+        const nextIdx = this.nextSeatIndex(this.activeIndex, pl => !pl.eliminated && !pl.folded && !pl.allIn);
+        this._setActivePlayer(nextIdx);
+      }
+      return true;
+    }
+
+    async _advanceStreet() {
+      this.activeIndex = -1;
+      // Собираем ставки улицы в центральный банк
+      this.players.forEach(p => {
+        p.bet = 0;
+        p.acted = false;
+        if (!p.folded && !p.allIn) p.lastAction = '';
+      });
+      this.currentBet = 0;
+      this.minRaise = this.bb;
+      this.onEvent({ type: 'GATHER_POT' });
+      this.onStateUpdate(this.getSnapshot());
+
+      await new Promise(res => setTimeout(res, 550));
+      if (!this.running) return;
+
+      if (this.street === 'PREFLOP') {
+        this.street = 'FLOP';
+        this.deck.pop(); // burn
+        this.communityCards.push(this.deck.pop(), this.deck.pop(), this.deck.pop());
+        this.onEvent({ type: 'DEAL_COMMUNITY', street: 'FLOP', count: 3 });
+      } else if (this.street === 'FLOP') {
+        this.street = 'TURN';
+        this.deck.pop();
+        this.communityCards.push(this.deck.pop());
+        this.onEvent({ type: 'DEAL_COMMUNITY', street: 'TURN', count: 1 });
+      } else if (this.street === 'TURN') {
+        this.street = 'RIVER';
+        this.deck.pop();
+        this.communityCards.push(this.deck.pop());
+        this.onEvent({ type: 'DEAL_COMMUNITY', street: 'RIVER', count: 1 });
+      } else {
+        this._runShowdown();
+        return;
+      }
+
+      this.onStateUpdate(this.getSnapshot());
+
+      // Если меньше 2 игроков могут делать ставки (All-In runout) -> идём дальше автоматически
+      const canBetCount = this.getInHandPlayers().filter(p => !p.allIn).length;
+      if (canBetCount < 2) {
+        await new Promise(res => setTimeout(res, 1100));
+        if (this.running) this._advanceStreet();
+        return;
+      }
+
+      await new Promise(res => setTimeout(res, 750));
+      if (!this.running) return;
+
+      // Первый ход на постфлопе — первый активный слева от дилера
+      const firstIdx = this.nextSeatIndex(this.dealerIndex, p => !p.eliminated && !p.folded && !p.allIn);
+      this._setActivePlayer(firstIdx);
+    }
+
+    async _awardSingleWinner(winner) {
+      this.activeIndex = -1;
+      this.street = 'SHOWDOWN';
+      const wonAmount = this.pot;
+      winner.chips += wonAmount;
+      winner.isWinner = true;
+      this.pot = 0;
+
+      this.onEvent({
+        type: 'SHOWDOWN',
+        winners: [{ seatIdx: this.players.indexOf(winner), name: winner.name, amount: wonAmount, handName: 'Все соперники спасовали' }],
+        winningCardIds: [],
+        revealAll: false
+      });
+      this.onStateUpdate(this.getSnapshot());
+
+      await new Promise(res => setTimeout(res, 2800));
+      if (this.running) this.startNextHand();
+    }
+
+    async _runShowdown() {
+      this.street = 'SHOWDOWN';
+      this.activeIndex = -1;
+
+      const sidePots = computeSidePots(this.players);
+      const evals = new Map();
+      this.getInHandPlayers().forEach(p => {
+        evals.set(p.id, evaluateBestHand([...p.cards, ...this.communityCards]));
+      });
+
+      const winMap = new Map();
+      const winningCardIds = new Set();
+
+      for (const potObj of sidePots) {
+        if (potObj.eligible.length === 0) continue;
+        let bestScore = -1;
+        let potWinners = [];
+
+        for (const p of potObj.eligible) {
+          const ev = evals.get(p.id);
+          if (ev.score > bestScore) {
+            bestScore = ev.score;
+            potWinners = [p];
+          } else if (ev.score === bestScore) {
+            potWinners.push(p);
+          }
         }
 
-        progressContainer.addEventListener('mousemove', (e) => {
-            const rect = progressContainer.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const width = rect.width;
-            const centerX = x / width - 0.5;
-            const rotateY = centerX * 15; 
-            const rotateX = -((e.clientY - rect.top) / rect.height - 0.5) * 10;
+        const share = Math.floor(potObj.amount / potWinners.length);
+        let remainder = potObj.amount - share * potWinners.length;
 
-            progressCard.style.transform = `rotateY(${rotateY}deg) rotateX(${rotateX}deg) scale(1.02)`;
+        potWinners.forEach(w => {
+          const extra = remainder > 0 ? 1 : 0;
+          if (remainder > 0) remainder--;
+          const gain = share + extra;
+          w.chips += gain;
+          w.isWinner = true;
+          const ev = evals.get(w.id);
+          ev.cards.forEach(c => winningCardIds.add(c.id));
+          winMap.set(w.id, {
+            seatIdx: this.players.indexOf(w),
+            name: w.name,
+            amount: (winMap.get(w.id)?.amount || 0) + gain,
+            handName: ev.name
+          });
         });
+      }
 
-        progressContainer.addEventListener('mouseleave', () => {
-            progressCard.style.transform = 'rotateY(0deg) rotateX(0deg) scale(1)';
-        });
+      this.pot = 0;
+      const winnersList = [...winMap.values()];
 
-        function showToast(message) {
-            toast.textContent = message;
-            toast.classList.remove('translate-y-20', 'opacity-0');
-            setTimeout(() => {
-                toast.classList.add('translate-y-20', 'opacity-0');
-            }, 3000);
+      this.onEvent({
+        type: 'SHOWDOWN',
+        winners: winnersList,
+        winningCardIds: [...winningCardIds],
+        revealAll: true
+      });
+      this.onStateUpdate(this.getSnapshot());
+
+      await new Promise(res => setTimeout(res, 4200));
+      if (this.running) this.startNextHand();
+    }
+
+    getSnapshot(forPlayerId = null) {
+      return {
+        tableName: this.tableName,
+        sb: this.sb,
+        bb: this.bb,
+        street: this.street,
+        pot: this.pot,
+        currentBet: this.currentBet,
+        minRaise: this.minRaise,
+        dealerIndex: this.dealerIndex,
+        activeIndex: this.activeIndex,
+        communityCards: this.communityCards,
+        players: this.players.map(p => ({
+          id: p.id,
+          name: p.name,
+          chips: p.chips,
+          bet: p.bet,
+          folded: p.folded,
+          allIn: p.allIn,
+          eliminated: p.eliminated,
+          lastAction: p.lastAction,
+          isWinner: p.isWinner,
+          isHuman: p.isHuman,
+          hasCards: p.cards.length === 2,
+          // Отправляем закрытые карты только владельцу или при вскрытии
+          cards: (forPlayerId === null || p.id === forPlayerId || (this.street === 'SHOWDOWN' && !p.folded)) ? p.cards : []
+        }))
+      };
+    }
+  }
+
+  return { createDeck, evaluateBestHand, computeSidePots, TableGame, HAND_NAMES };
+})();
+
+/* ============================================================================
+   4. AIPlayer — УМНЫЙ ИИ СОПЕРНИКОВ С ХАРАКТЕРАМИ И БЛЕФОМ
+   ============================================================================ */
+const AIPlayer = (() => {
+  const PROFILES = {
+    tight:      { tightness: 0.62, aggression: 0.35, bluffRate: 0.06, label: 'Осторожный' },
+    balanced:   { tightness: 0.45, aggression: 0.58, bluffRate: 0.14, label: 'Сбалансированный' },
+    aggressive: { tightness: 0.30, aggression: 0.80, bluffRate: 0.26, label: 'Агрессивный' }
+  };
+
+  function preflopStrength(cards) {
+    if (!cards || cards.length < 2) return 0.3;
+    const [a, b] = [...cards].sort((x, y) => y.rank - x.rank);
+    const suited = a.suit === b.suit;
+    const pair = a.rank === b.rank;
+    const gap = a.rank - b.rank;
+
+    let score = (a.rank / 14) * 0.45 + (b.rank / 14) * 0.25;
+    if (pair) score += 0.32 + (a.rank / 14) * 0.15;
+    if (suited) score += 0.08;
+    if (gap === 1) score += 0.06;
+    else if (gap === 2) score += 0.03;
+    if (a.rank >= 13 && b.rank >= 10) score += 0.12;
+    return Math.min(1, score);
+  }
+
+  function postflopStrength(hole, board) {
+    const all = [...hole, ...board];
+    const ev = PokerEngine.evaluateBestHand(all);
+    // Нормируем силу комбинации от 0.15 до 1.0
+    const catMap = [0.22, 0.46, 0.66, 0.78, 0.85, 0.89, 0.94, 0.98, 0.99, 1.0];
+    let str = catMap[ev.category] || 0.2;
+
+    // Проверка флеш-дро (4 карты одной масти)
+    if (ev.category < 5 && board.length < 5) {
+      const suitCount = {};
+      all.forEach(c => suitCount[c.suit] = (suitCount[c.suit] || 0) + 1);
+      if (Object.values(suitCount).some(v => v === 4)) str = Math.max(str, 0.56);
+    }
+    return str;
+  }
+
+  function decide(game, player) {
+    const prof = PROFILES[player.personality] || PROFILES.balanced;
+    const diffBoost = game.difficulty === 'hard' ? 0.08 : (game.difficulty === 'easy' ? -0.1 : 0);
+    const toCall = Math.max(0, game.currentBet - player.bet);
+    const potOdds = toCall > 0 ? toCall / (game.pot + toCall) : 0;
+
+    let strength = game.street === 'PREFLOP'
+      ? preflopStrength(player.cards)
+      : postflopStrength(player.cards, game.communityCards);
+
+    // Позиционный бонус (ближе к баттону — увереннее)
+    const seatIdx = game.players.indexOf(player);
+    const distFromDealer = (seatIdx - game.dealerIndex + game.players.length) % game.players.length;
+    if (distFromDealer >= game.players.length - 2) strength += 0.05;
+
+    // Небольшой шум и блеф
+    const isBluffing = Math.random() < (prof.bluffRate + Math.max(0, diffBoost));
+    const effStrength = Math.min(1, strength + (Math.random() - 0.5) * 0.12 + (isBluffing ? 0.28 : 0));
+
+    // Выбор действия
+    if (toCall === 0) {
+      if (effStrength > 0.62 && Math.random() < prof.aggression + diffBoost) {
+        const betSize = Math.max(game.bb, Math.round((game.pot * (0.45 + Math.random() * 0.4)) / game.bb) * game.bb);
+        return { action: 'raise', amount: player.bet + Math.min(player.chips, betSize) };
+      }
+      return { action: 'check', amount: 0 };
+    }
+
+    // Нужно отвечать на ставку
+    if (effStrength < prof.tightness * 0.85 && potOdds > 0.18 && !isBluffing) {
+      return { action: 'fold', amount: 0 };
+    }
+
+    if (effStrength > 0.78 && Math.random() < prof.aggression + 0.1 && player.chips > toCall + game.minRaise) {
+      const raiseAmt = game.currentBet + Math.max(game.minRaise, Math.round((game.pot * 0.65) / game.bb) * game.bb);
+      return { action: 'raise', amount: Math.min(player.bet + player.chips, raiseAmt) };
+    }
+
+    if (effStrength >= potOdds + 0.12 || toCall <= game.bb) {
+      return { action: 'call', amount: 0 };
+    }
+
+    return { action: 'fold', amount: 0 };
+  }
+
+  return { decide, PROFILES };
+})();
+
+/* ============================================================================
+   5. Scene3D — 3D-СТОЛ, ДЕВУШКА-ДИЛЕР, 3D-КАРТЫ И 3D-ФИШКИ (THREE.JS + GSAP)
+   ============================================================================ */
+const Scene3D = (() => {
+  let scene, camera, renderer;
+  let dealerGroup, dealerRig = {}, dealerMixer = null, dealerGLTF = null;
+  let clock = new THREE.Clock();
+  let dealerState = 'idle';
+  let dealerStateTimer = 0;
+
+  const cardTextures = new Map();
+  let cardBackTexture = null;
+  const chipTextures = new Map();
+
+  // Объекты на столе
+  let seatPositions = []; // 3D позиции игроков
+  let activeHoleCardMeshes = [];
+  let communityCardMeshes = [];
+  let seatChipStacks = [];
+  let potChipsGroup = null;
+  let movingChipsGroup = null;
+
+  const CHIP_DENOMS = [
+    { val: 5000, color: '#9e1c28', stripe: '#f6e08c' },
+    { val: 1000, color: '#d4af37', stripe: '#1a1a1a' },
+    { val: 500,  color: '#6b2d8a', stripe: '#ffffff' },
+    { val: 100,  color: '#1b1f23', stripe: '#d4af37' },
+    { val: 25,   color: '#1c7c3e', stripe: '#ffffff' },
+    { val: 10,   color: '#2563ab', stripe: '#f4f4f4' }
+  ];
+
+  function init(onProgress) {
+    return new Promise(async (resolve) => {
+      const container = document.getElementById('canvas-container');
+      const { width, height } = OrientationManager.getSize();
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x07100d);
+      scene.fog = new THREE.FogExp2(0x07100d, 0.042);
+
+      camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 60);
+      camera.position.set(0, 6.9, 7.6);
+      camera.lookAt(0, 0.25, -0.45);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(width, height);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.12;
+      container.innerHTML = '';
+      container.appendChild(renderer.domElement);
+
+      onProgress(20, 'Настройка освещения и атмосферы казино...');
+      setupLights();
+      setupEnvironment();
+
+      onProgress(40, 'Загрузка 3D-стола и элитного сукна...');
+      buildPokerTable();
+
+      onProgress(60, 'Генерация текстур 52 карт и 3D-фишек...');
+      generateCardBackTexture();
+      generateChipTextures();
+
+      potChipsGroup = new THREE.Group();
+      movingChipsGroup = new THREE.Group();
+      scene.add(potChipsGroup);
+      scene.add(movingChipsGroup);
+
+      onProgress(78, 'Загрузка 3D-модели девушки-дилера...');
+      await setupDealer();
+
+      onProgress(95, 'Финальная калибровка 3D-камеры...');
+      animate();
+      resolve();
+    });
+  }
+
+  function setupLights() {
+    const ambient = new THREE.AmbientLight(0xd9e8df, 0.55);
+    scene.add(ambient);
+
+    // Главный тёплый софит над столом
+    const spot = new THREE.SpotLight(0xfff1d6, 2.2, 26, Math.PI / 3.2, 0.55, 1.2);
+    spot.position.set(0, 9.5, 1.2);
+    spot.castShadow = true;
+    spot.shadow.mapSize.width = 1024;
+    spot.shadow.mapSize.height = 1024;
+    spot.shadow.bias = -0.0005;
+    scene.add(spot);
+
+    // Контровой золотистый свет на дилера
+    const rim = new THREE.PointLight(0xffcf70, 1.1, 14);
+    rim.position.set(0, 4.2, -4.5);
+    scene.add(rim);
+
+    // Изумрудная подсветка снизу стола
+    const fill = new THREE.PointLight(0x1f6e52, 0.7, 12);
+    fill.position.set(-4.5, 2.5, 4.0);
+    scene.add(fill);
+  }
+
+  function setupEnvironment() {
+    // Пол элитного зала
+    const floorGeo = new THREE.PlaneGeometry(40, 40);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x091310, roughness: 0.85, metalness: 0.1 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -1.6;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    // Декоративные золотые колонны на заднем плане
+    const pillarGeo = new THREE.CylinderGeometry(0.28, 0.32, 9, 16);
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0x1b2b25, roughness: 0.5, metalness: 0.35 });
+    [[-7, -7], [7, -7], [-10, -2], [10, -2]].forEach(([x, z]) => {
+      const m = new THREE.Mesh(pillarGeo, pillarMat);
+      m.position.set(x, 2.5, z);
+      scene.add(m);
+    });
+  }
+
+  // Текстура сукна с разметкой и логотипом
+  function createFeltTexture() {
+    const c = document.createElement('canvas');
+    c.width = 1024;
+    c.height = 512;
+    const g = c.getContext('2d');
+
+    const grad = g.createRadialGradient(512, 256, 40, 512, 256, 520);
+    grad.addColorStop(0, '#135e43');
+    grad.addColorStop(0.65, '#0c4330');
+    grad.addColorStop(1, '#072b1f');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 1024, 512);
+
+    // Тонкая фактура ткани
+    g.fillStyle = 'rgba(255,255,255,0.02)';
+    for (let i = 0; i < 3200; i++) {
+      g.fillRect(Math.random() * 1024, Math.random() * 512, 2, 2);
+    }
+
+    // Золотая овальная линия ставок
+    g.strokeStyle = 'rgba(212, 175, 55, 0.45)';
+    g.lineWidth = 4;
+    g.beginPath();
+    g.ellipse(512, 256, 385, 168, 0, 0, Math.PI * 2);
+    g.stroke();
+
+    // Надпись клуба в центре
+    g.fillStyle = 'rgba(212, 175, 55, 0.22)';
+    g.font = 'bold 34px Georgia, serif';
+    g.textAlign = 'center';
+    g.fillText('ROYAL HOLD\'EM 3D', 512, 240);
+    g.font = '600 16px sans-serif';
+    g.fillText('NO-LIMIT TEXAS HOLD\'EM  •  VIP CASINO', 512, 272);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.encoding = THREE.sRGBEncoding;
+    return tex;
+  }
+
+  function buildPokerTable() {
+    const tableGroup = new THREE.Group();
+
+    // Овальная форма стола (растянутый цилиндр)
+    const feltGeo = new THREE.CylinderGeometry(3.45, 3.45, 0.26, 64);
+    const feltMat = new THREE.MeshStandardMaterial({
+      map: createFeltTexture(),
+      roughness: 0.88,
+      metalness: 0.04
+    });
+    const felt = new THREE.Mesh(feltGeo, feltMat);
+    felt.scale.set(1.48, 1, 0.82);
+    felt.position.y = 0;
+    felt.receiveShadow = true;
+    tableGroup.add(felt);
+
+    // Мягкий кожаный бортик (Torus)
+    const railGeo = new THREE.TorusGeometry(3.52, 0.24, 18, 72);
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x2a140d, roughness: 0.42, metalness: 0.15 });
+    const rail = new THREE.Mesh(railGeo, railMat);
+    rail.rotation.x = Math.PI / 2;
+    rail.scale.set(1.48, 0.82, 1);
+    rail.position.y = 0.16;
+    rail.castShadow = true;
+    rail.receiveShadow = true;
+    tableGroup.add(rail);
+
+    // Золотая латунная окантовка
+    const trimGeo = new THREE.TorusGeometry(3.28, 0.035, 12, 72);
+    const trimMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.25, metalness: 0.85 });
+    const trim = new THREE.Mesh(trimGeo, trimMat);
+    trim.rotation.x = Math.PI / 2;
+    trim.scale.set(1.48, 0.82, 1);
+    trim.position.y = 0.15;
+    tableGroup.add(trim);
+
+    // Ножка-пьедестал стола
+    const pedGeo = new THREE.CylinderGeometry(1.1, 1.5, 1.7, 24);
+    const pedMat = new THREE.MeshStandardMaterial({ color: 0x1b100b, roughness: 0.5, metalness: 0.2 });
+    const ped = new THREE.Mesh(pedGeo, pedMat);
+    ped.position.y = -0.95;
+    tableGroup.add(ped);
+
+    scene.add(tableGroup);
+  }
+
+  // Девушка-дилер: попытка загрузки внешней GLB-модели + надёжный детализированный 3D-фоллбэк
+  async function setupDealer() {
+    dealerGroup = new THREE.Group();
+    dealerGroup.position.set(0, -0.35, -3.28);
+    scene.add(dealerGroup);
+
+    // Сначала строим красивый процедурный 3D-фоллбэк девушки-дилера (всегда доступен мгновенно и офлайн)
+    buildProceduralFemaleDealer();
+
+    // Параллельно пытаемся подгрузить публичную GLB-модель с таймаутом 3.5 сек
+    if (typeof THREE.GLTFLoader !== 'undefined') {
+      const loader = new THREE.GLTFLoader();
+      const publicUrl = 'https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb';
+      try {
+        const gltf = await Promise.race([
+          new Promise((res, rej) => loader.load(publicUrl, res, undefined, rej)),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3500))
+        ]);
+        if (gltf && gltf.scene) {
+          dealerGLTF = gltf.scene;
+          dealerGLTF.scale.set(1.38, 1.38, 1.38);
+          dealerGLTF.position.set(0, -1.05, 0.05);
+          dealerGLTF.traverse(obj => {
+            if (obj.isMesh) {
+              obj.castShadow = true;
+              obj.receiveShadow = true;
+            }
+          });
+          // Скрываем процедурный фоллбэк и показываем GLB-модель
+          if (dealerRig.proceduralRoot) dealerRig.proceduralRoot.visible = false;
+          dealerGroup.add(dealerGLTF);
+
+          if (gltf.animations && gltf.animations.length > 0) {
+            dealerMixer = new THREE.AnimationMixer(dealerGLTF);
+            dealerMixer.clipAction(gltf.animations[0]).play();
+          }
         }
-    </script>
+      } catch (e) {
+        // Оставляем процедурную 3D-девушку-дилера — работает безупречно офлайн!
+      }
+    }
+  }
+
+  function buildProceduralFemaleDealer() {
+    const root = new THREE.Group();
+    dealerRig.proceduralRoot = root;
+
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xf1c2a0, roughness: 0.55 });
+    const vestMat = new THREE.MeshStandardMaterial({ color: 0x16161c, roughness: 0.65 });
+    const shirtMat = new THREE.MeshStandardMaterial({ color: 0xf7f5f0, roughness: 0.5 });
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.3, metalness: 0.8 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x2b1810, roughness: 0.45 });
+    const lipMat = new THREE.MeshStandardMaterial({ color: 0xb8323e, roughness: 0.35 });
+    const bowMat = new THREE.MeshStandardMaterial({ color: 0xa61c28, roughness: 0.4 });
+
+    // Торс (элегантная жилетка крупье поверх белой блузки)
+    const torsoGroup = new THREE.Group();
+    torsoGroup.position.y = 0.72;
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.20, 0.62, 18), vestMat);
+    torso.scale.set(1.18, 1, 0.72);
+    torso.castShadow = true;
+    torsoGroup.add(torso);
+
+    // Белый воротничок и красная бабочка
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.14, 16), shirtMat);
+    collar.position.set(0, 0.28, 0.04);
+    torsoGroup.add(collar);
+
+    const bowL = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.09, 8), bowMat);
+    bowL.rotation.z = -Math.PI / 2;
+    bowL.position.set(-0.04, 0.28, 0.15);
+    const bowR = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.09, 8), bowMat);
+    bowR.rotation.z = Math.PI / 2;
+    bowR.position.set(0.04, 0.28, 0.15);
+    torsoGroup.add(bowL, bowR);
+
+    // Золотые пуговицы
+    for (let i = 0; i < 3; i++) {
+      const btn = new THREE.Mesh(new THREE.SphereGeometry(0.016, 8, 8), goldMat);
+      btn.position.set(0, 0.14 - i * 0.11, 0.17);
+      torsoGroup.add(btn);
+    }
+
+    // Шея и голова
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 0.42, 0);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.075, 0.14, 14), skinMat);
+    neck.position.y = -0.02;
+    headGroup.add(neck);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.185, 24, 24), skinMat);
+    head.scale.set(0.92, 1.06, 0.96);
+    head.position.y = 0.15;
+    head.castShadow = true;
+    headGroup.add(head);
+
+    // Глаза и губы
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.2 });
+    const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.019, 10, 10), eyeMat);
+    eyeL.position.set(-0.06, 0.17, 0.155);
+    const eyeR = eyeL.clone();
+    eyeR.position.x = 0.06;
+    const lips = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.018, 0.02), lipMat);
+    lips.position.set(0, 0.075, 0.165);
+    headGroup.add(eyeL, eyeR, lips);
+
+    // Причёска (объёмные волосы + элегантный пучок)
+    const hairTop = new THREE.Mesh(new THREE.SphereGeometry(0.198, 20, 20, 0, Math.PI * 2, 0, Math.PI * 0.62), hairMat);
+    hairTop.position.set(0, 0.17, -0.015);
+    const hairBun = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 16), hairMat);
+    hairBun.position.set(0, 0.23, -0.19);
+    const hairSideL = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.04, 0.28, 12), hairMat);
+    hairSideL.position.set(-0.145, 0.08, -0.04);
+    const hairSideR = hairSideL.clone();
+    hairSideR.position.x = 0.145;
+    headGroup.add(hairTop, hairBun, hairSideL, hairSideR);
+    torsoGroup.add(headGroup);
+
+    // Артикулированные руки (левая и правая)
+    function makeArm(side) {
+      const shoulder = new THREE.Group();
+      shoulder.position.set(side * 0.31, 0.24, 0.02);
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.048, 0.34, 12), shirtMat);
+      upper.position.y = -0.15;
+      shoulder.add(upper);
+
+      const elbow = new THREE.Group();
+      elbow.position.set(0, -0.31, 0);
+      const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.036, 0.32, 12), skinMat);
+      forearm.position.y = -0.15;
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 10), skinMat);
+      hand.position.y = -0.32;
+      elbow.add(forearm, hand);
+      shoulder.add(elbow);
+
+      return { shoulder, elbow };
+    }
+
+    const leftArm = makeArm(-1);
+    const rightArm = makeArm(1);
+    leftArm.shoulder.rotation.set(-0.35, 0, 0.22);
+    leftArm.elbow.rotation.set(-0.75, 0, -0.15);
+    rightArm.shoulder.rotation.set(-0.35, 0, -0.22);
+    rightArm.elbow.rotation.set(-0.75, 0, 0.15);
+
+    torsoGroup.add(leftArm.shoulder, rightArm.shoulder);
+    root.add(torsoGroup);
+    dealerGroup.add(root);
+
+    dealerRig.torso = torsoGroup;
+    dealerRig.head = headGroup;
+    dealerRig.leftArm = leftArm;
+    dealerRig.rightArm = rightArm;
+  }
+
+  function triggerDealerAnim(type, targetX = 0) {
+    dealerState = type;
+    dealerStateTimer = type === 'celebrate' ? 2.2 : 0.85;
+
+    if (dealerRig.rightArm && dealerRig.head) {
+      const aimY = Math.max(-0.55, Math.min(0.55, targetX * 0.12));
+      if (type === 'deal') {
+        gsap.to(dealerRig.rightArm.shoulder.rotation, { x: -1.15, y: aimY, duration: 0.22, yoyo: true, repeat: 1 });
+        gsap.to(dealerRig.head.rotation, { y: aimY * 0.7, duration: 0.25 });
+      } else if (type === 'invite') {
+        gsap.to(dealerRig.leftArm.shoulder.rotation, { x: -0.95, z: 0.45, duration: 0.35, yoyo: true, repeat: 1 });
+        gsap.to(dealerRig.head.rotation, { y: aimY, duration: 0.35 });
+      } else if (type === 'celebrate') {
+        gsap.to(dealerRig.leftArm.shoulder.rotation, { x: -1.3, z: 0.55, duration: 0.35, yoyo: true, repeat: 3 });
+        gsap.to(dealerRig.rightArm.shoulder.rotation, { x: -1.3, z: -0.55, duration: 0.35, yoyo: true, repeat: 3 });
+      }
+    }
+    if (dealerGLTF) {
+      const aimY = Math.max(-0.4, Math.min(0.4, targetX * 0.08));
+      gsap.to(dealerGLTF.rotation, { y: aimY, duration: 0.35 });
+    }
+  }
+
+  // Генерация рубашки карт
+  function generateCardBackTexture() {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 360;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fdfaf2';
+    g.fillRect(0, 0, 256, 360);
+    g.fillStyle = '#0e2845';
+    g.fillRect(14, 14, 228, 332);
+    g.strokeStyle = '#d4af37';
+    g.lineWidth = 6;
+    g.strokeRect(22, 22, 212, 316);
+    g.strokeStyle = 'rgba(212,175,55,0.35)';
+    g.lineWidth = 2;
+    for (let y = 40; y < 320; y += 22) {
+      g.beginPath();
+      g.moveTo(28, y);
+      g.lineTo(228, y);
+      g.stroke();
+    }
+    g.fillStyle = '#d4af37';
+    g.font = 'bold 72px Georgia, serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('♠', 128, 180);
+
+    cardBackTexture = new THREE.CanvasTexture(c);
+    cardBackTexture.encoding = THREE.sRGBEncoding;
+  }
+
+  function getCardFaceTexture(card) {
+    if (cardTextures.has(card.id)) return cardTextures.get(card.id);
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 360;
+    const g = c.getContext('2d');
+
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, 256, 360);
+    g.strokeStyle = '#dcdcdc';
+    g.lineWidth = 6;
+    g.strokeRect(4, 4, 248, 352);
+
+    const suitMap = { s: '♠', h: '♥', d: '♦', c: '♣' };
+    const isRed = card.suit === 'h' || card.suit === 'd';
+    const rankStr = { 11: 'J', 12: 'Q', 13: 'K', 14: 'A' }[card.rank] || String(card.rank);
+    const suitChar = suitMap[card.suit];
+
+    g.fillStyle = isRed ? '#cc1f26' : '#18181b';
+    g.font = 'bold 54px Arial, sans-serif';
+    g.textAlign = 'left';
+    g.fillText(rankStr, 22, 62);
+    g.font = '46px Arial, sans-serif';
+    g.fillText(suitChar, 24, 110);
+
+    // Центральный крупный знак
+    g.font = '126px Georgia, serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(suitChar, 128, 196);
+
+    // Нижний перевёрнутый угол
+    g.save();
+    g.translate(234, 298);
+    g.rotate(Math.PI);
+    g.font = 'bold 54px Arial, sans-serif';
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+    g.fillText(rankStr, 0, 0);
+    g.restore();
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.encoding = THREE.sRGBEncoding;
+    cardTextures.set(card.id, tex);
+    return tex;
+  }
+
+  function createCardMesh(card, faceUp = false) {
+    const geo = new THREE.BoxGeometry(0.62, 0.018, 0.88);
+    const sideMat = new THREE.MeshStandardMaterial({ color: 0xf4f4f4, roughness: 0.6 });
+    const faceMat = new THREE.MeshStandardMaterial({
+      map: card ? getCardFaceTexture(card) : cardBackTexture,
+      roughness: 0.35
+    });
+    const backMat = new THREE.MeshStandardMaterial({ map: cardBackTexture, roughness: 0.45 });
+    // BoxGeometry materials: [+x, -x, +y (top), -y (bottom), +z, -z]
+    const mesh = new THREE.Mesh(geo, [sideMat, sideMat, faceMat, backMat, sideMat, sideMat]);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.rotation.z = faceUp ? 0 : Math.PI;
+    mesh.userData = { cardId: card ? card.id : null, faceUp };
+    return mesh;
+  }
+
+  function generateChipTextures() {
+    CHIP_DENOMS.forEach(d => {
+      const c = document.createElement('canvas');
+      c.width = 128;
+      c.height = 128;
+      const g = c.getContext('2d');
+      g.fillStyle = d.color;
+      g.beginPath();
+      g.arc(64, 64, 62, 0, Math.PI * 2);
+      g.fill();
+
+      // Полоски по краю фишки
+      g.strokeStyle = d.stripe;
+      g.lineWidth = 10;
+      g.setLineDash([14, 18]);
+      g.beginPath();
+      g.arc(64, 64, 53, 0, Math.PI * 2);
+      g.stroke();
+      g.setLineDash([]);
+
+      g.fillStyle = '#f8f5ec';
+      g.beginPath();
+      g.arc(64, 64, 34, 0, Math.PI * 2);
+      g.fill();
+
+      g.fillStyle = '#151515';
+      g.font = 'bold 20px Arial, sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(d.val >= 1000 ? `${d.val / 1000}K` : String(d.val), 64, 65);
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.encoding = THREE.sRGBEncoding;
+      chipTextures.set(d.val, tex);
+    });
+  }
+
+  function buildChipStackMesh(amount, maxChips = 10) {
+    const group = new THREE.Group();
+    if (amount <= 0) return group;
+    let rem = amount;
+    const chips = [];
+    for (const d of CHIP_DENOMS) {
+      while (rem >= d.val && chips.length < maxChips) {
+        chips.push(d);
+        rem -= d.val;
+      }
+    }
+    if (chips.length === 0) chips.push(CHIP_DENOMS[CHIP_DENOMS.length - 1]);
+
+    const chipGeo = new THREE.CylinderGeometry(0.17, 0.17, 0.042, 18);
+    chips.forEach((d, idx) => {
+      const sideMat = new THREE.MeshStandardMaterial({ color: d.color, roughness: 0.35, metalness: 0.15 });
+      const topMat = new THREE.MeshStandardMaterial({ map: chipTextures.get(d.val), roughness: 0.35 });
+      const m = new THREE.Mesh(chipGeo, [sideMat, topMat, topMat]);
+      m.position.y = 0.022 + idx * 0.044;
+      m.castShadow = true;
+      group.add(m);
+    });
+    return group;
+  }
+
+  // Расчёт 3D-позиций для N игроков вокруг овального стола (место 0 — всегда человек внизу по центру)
+  function configureSeats(count) {
+    seatPositions = [];
+    // Распределяем углы от PI/2 (ближний центр) по часовой стрелке, оставляя место дилеру на -PI/2
+    for (let i = 0; i < count; i++) {
+      let angle;
+      if (i === 0) {
+        angle = Math.PI / 2;
+      } else {
+        // Равномерно по дуге от 125° до 415° (избегая зоны дилера ровно на 270°)
+        const span = Math.PI * 1.56;
+        const start = Math.PI / 2 + 0.42;
+        const step = count > 2 ? span / (count - 2) : 0;
+        angle = count === 2 ? -Math.PI / 2 + 0.55 : start + (i - 1) * step;
+      }
+      const rx = 4.65;
+      const rz = 2.65;
+      const x = Math.cos(angle) * rx;
+      const z = Math.sin(angle) * rz;
+      seatPositions.push({
+        seat: new THREE.Vector3(x, 0.25, z),
+        cards: new THREE.Vector3(x * 0.76, 0.16, z * 0.72),
+        chips: new THREE.Vector3(x * 0.84 + (x >= 0 ? -0.35 : 0.35), 0.14, z * 0.80),
+        bet: new THREE.Vector3(x * 0.52, 0.14, z * 0.48)
+      });
+    }
+    clearTableObjects();
+  }
+
+  function clearTableObjects() {
+    activeHoleCardMeshes.forEach(m => scene.remove(m));
+    activeHoleCardMeshes = [];
+    communityCardMeshes.forEach(m => scene.remove(m));
+    communityCardMeshes = [];
+    seatChipStacks.forEach(g => scene.remove(g));
+    seatChipStacks = [];
+    while (potChipsGroup.children.length) potChipsGroup.remove(potChipsGroup.children[0]);
+    while (movingChipsGroup.children.length) movingChipsGroup.remove(movingChipsGroup.children[0]);
+  }
+
+  function updateSeatStacks(players) {
+    seatChipStacks.forEach(g => scene.remove(g));
+    seatChipStacks = [];
+    players.forEach((p, idx) => {
+      if (!seatPositions[idx] || p.eliminated) return;
+      const stack = buildChipStackMesh(p.chips, 9);
+      stack.position.copy(seatPositions[idx].chips);
+      scene.add(stack);
+      seatChipStacks.push(stack);
+    });
+  }
+
+  function animateDealHoleCards(snapshot, localPlayerId) {
+    activeHoleCardMeshes.forEach(m => scene.remove(m));
+    activeHoleCardMeshes = [];
+    communityCardMeshes.forEach(m => scene.remove(m));
+    communityCardMeshes = [];
+
+    AudioEngine.sfx.shuffle();
+    let delayIdx = 0;
+
+    for (let r = 0; r < 2; r++) {
+      snapshot.players.forEach((p, seatIdx) => {
+        if (p.eliminated || !p.hasCards || !seatPositions[seatIdx]) return;
+        const isLocal = p.id === localPlayerId;
+        const cardData = (p.cards && p.cards[r]) ? p.cards[r] : null;
+        const mesh = createCardMesh(cardData, false);
+        mesh.position.set(0, 0.45, -2.55);
+        mesh.userData.seatIdx = seatIdx;
+        mesh.userData.cardSlot = r;
+        scene.add(mesh);
+        activeHoleCardMeshes.push(mesh);
+
+        const target = seatPositions[seatIdx].cards;
+        const offsetX = (r === 0 ? -0.24 : 0.24);
+        const d = 0.08 * delayIdx++;
+
+        setTimeout(() => {
+          AudioEngine.sfx.cardDeal();
+          triggerDealerAnim('deal', target.x);
+        }, d * 1000);
+
+        gsap.to(mesh.position, {
+          x: target.x + offsetX,
+          y: 0.16 + r * 0.008,
+          z: target.z + (isLocal ? 0.12 : 0),
+          duration: 0.42,
+          delay: d,
+          ease: 'power2.out'
+        });
+
+        // Плавный переворот карт для локального игрока
+        if (isLocal && cardData) {
+          gsap.to(mesh.rotation, {
+            z: 0,
+            x: -0.28,
+            duration: 0.36,
+            delay: d + 0.36,
+            ease: 'back.out(1.4)',
+            onStart: () => AudioEngine.sfx.cardFlip()
+          });
+        }
+      });
+    }
+  }
+
+  function animateCommunityCards(cards) {
+    const startIdx = communityCardMeshes.length;
+    for (let i = startIdx; i < cards.length; i++) {
+      const card = cards[i];
+      const mesh = createCardMesh(card, false);
+      mesh.position.set(0, 0.5, -2.5);
+      scene.add(mesh);
+      communityCardMeshes.push(mesh);
+
+      const targetX = (i - 2) * 0.78;
+      const d = (i - startIdx) * 0.16;
+
+      setTimeout(() => {
+        AudioEngine.sfx.cardFlip();
+        triggerDealerAnim('deal', targetX);
+      }, d * 1000);
+
+      gsap.to(mesh.position, {
+        x: targetX,
+        y: 0.165,
+        z: -0.22,
+        duration: 0.42,
+        delay: d,
+        ease: 'power2.out'
+      });
+      gsap.to(mesh.rotation, {
+        z: 0,
+        duration: 0.35,
+        delay: d + 0.18,
+        ease: 'power2.inOut'
+      });
+    }
+  }
+
+  function animateFold(seatIdx) {
+    AudioEngine.sfx.fold();
+    activeHoleCardMeshes
+      .filter(m => m.userData.seatIdx === seatIdx)
+      .forEach(m => {
+        gsap.to(m.position, { x: 0, y: 0.15, z: -1.65, duration: 0.38, ease: 'power2.in' });
+        gsap.to(m.rotation, { z: Math.PI, y: Math.random() * 1.4, duration: 0.38 });
+        gsap.to(m.scale, { x: 0.01, y: 0.01, z: 0.01, duration: 0.25, delay: 0.35 });
+      });
+  }
+
+  function animateChipBet(seatIdx, amount) {
+    if (!seatPositions[seatIdx] || amount <= 0) return;
+    AudioEngine.sfx.chipClink();
+    const stack = buildChipStackMesh(amount, 5);
+    stack.position.copy(seatPositions[seatIdx].chips);
+    movingChipsGroup.add(stack);
+
+    const dest = seatPositions[seatIdx].bet;
+    gsap.to(stack.position, {
+      x: dest.x + (Math.random() - 0.5) * 0.25,
+      y: 0.14,
+      z: dest.z + (Math.random() - 0.5) * 0.2,
+      duration: 0.35,
+      ease: 'power2.out'
+    });
+  }
+
+  function animateGatherPot(totalPot) {
+    if (movingChipsGroup.children.length > 0) {
+      AudioEngine.sfx.chipPot();
+      [...movingChipsGroup.children].forEach(ch => {
+        gsap.to(ch.position, {
+          x: (Math.random() - 0.5) * 0.5,
+          y: 0.14,
+          z: 0.65 + (Math.random() - 0.5) * 0.2,
+          duration: 0.42,
+          ease: 'power2.inOut',
+          onComplete: () => movingChipsGroup.remove(ch)
+        });
+      });
+    }
+
+    setTimeout(() => {
+      while (potChipsGroup.children.length) potChipsGroup.remove(potChipsGroup.children[0]);
+      if (totalPot > 0) {
+        const s1 = buildChipStackMesh(Math.ceil(totalPot * 0.6), 10);
+        s1.position.set(-0.22, 0.14, 0.68);
+        const s2 = buildChipStackMesh(Math.floor(totalPot * 0.4), 8);
+        s2.position.set(0.22, 0.14, 0.68);
+        potChipsGroup.add(s1, s2);
+      }
+    }, 420);
+  }
+
+  function animateShowdown(snapshot, winningCardIds, winners, revealAll) {
+    triggerDealerAnim('celebrate', 0);
+    AudioEngine.sfx.winFanfare();
+
+    // Открываем карты оставшихся игроков
+    if (revealAll) {
+      snapshot.players.forEach((p, seatIdx) => {
+        if (p.folded || p.eliminated || !p.cards || p.cards.length < 2) return;
+        const meshes = activeHoleCardMeshes.filter(m => m.userData.seatIdx === seatIdx);
+        meshes.forEach((m, slot) => {
+          const cardData = p.cards[slot];
+          if (!cardData) return;
+          m.material[2].map = getCardFaceTexture(cardData);
+          m.material[2].needsUpdate = true;
+          m.userData.cardId = cardData.id;
+          gsap.to(m.rotation, { z: 0, x: -0.15, duration: 0.4 });
+        });
+      });
+    }
+
+    // Подсвечиваем и приподнимаем 5 выигрышных карт
+    const winSet = new Set(winningCardIds || []);
+    [...activeHoleCardMeshes, ...communityCardMeshes].forEach(m => {
+      if (winSet.has(m.userData.cardId)) {
+        gsap.to(m.position, { y: 0.42, duration: 0.45, ease: 'back.out(2)' });
+        m.material[2].emissive = new THREE.Color(0x554400);
+        m.material[2].emissiveIntensity = 0.65;
+      }
+    });
+
+    // Перелёт фишек из банка к победителю(ям)
+    if (winners && winners.length > 0) {
+      const targetSeat = seatPositions[winners[0].seatIdx];
+      if (targetSeat) {
+        [...potChipsGroup.children, ...movingChipsGroup.children].forEach(ch => {
+          gsap.to(ch.position, {
+            x: targetSeat.chips.x,
+            y: 0.35,
+            z: targetSeat.chips.z,
+            duration: 0.85,
+            delay: 0.4,
+            ease: 'power2.inOut',
+            onComplete: () => {
+              if (ch.parent) ch.parent.remove(ch);
+            }
+          });
+        });
+      }
+    }
+  }
+
+  // Проекция 3D-координаты в 2D-экран (в логических координатах #game-root)
+  function projectTo2D(vec3) {
+    if (!camera) return { x: 0, y: 0 };
+    const { width, height } = OrientationManager.getSize();
+    const v = vec3.clone().project(camera);
+    return {
+      x: (v.x * 0.5 + 0.5) * width,
+      y: (-v.y * 0.5 + 0.5) * height
+    };
+  }
+
+  function resize(w, h) {
+    if (!camera || !renderer) return;
+    camera.aspect = w / h;
+    // Адаптивный угол обзора для узких мобильных экранов
+    camera.fov = (w / h) < 1.65 ? 48 : 42;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = clock.getDelta();
+    const elapsed = clock.getElapsedTime();
+
+    if (dealerMixer) dealerMixer.update(dt);
+
+    // Плавная idle-анимация процедурного дилера (дыхание, повороты головы)
+    if (dealerRig.torso && dealerRig.head) {
+      dealerRig.torso.position.y = 0.72 + Math.sin(elapsed * 2.1) * 0.012;
+      if (dealerStateTimer > 0) {
+        dealerStateTimer -= dt;
+      } else {
+        dealerRig.head.rotation.y = Math.sin(elapsed * 0.7) * 0.16;
+        dealerRig.head.rotation.x = Math.sin(elapsed * 1.1) * 0.04;
+      }
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  return {
+    init,
+    resize,
+    configureSeats,
+    clearTableObjects,
+    updateSeatStacks,
+    animateDealHoleCards,
+    animateCommunityCards,
+    animateFold,
+    animateChipBet,
+    animateGatherPot,
+    animateShowdown,
+    triggerDealerAnim,
+    projectTo2D,
+    getSeatPositions: () => seatPositions
+  };
+})();
+
+/* ============================================================================
+   6. NetworkManager — P2P МУЛЬТИПЛЕЕР (PeerJS Wi-Fi + ОФЛАЙН WebRTC SDP)
+   ============================================================================ */
+const NetworkManager = (() => {
+  let mode = null; // 'online_host' | 'online_client' | 'manual_host' | 'manual_client'
+  let peer = null;
+  let connections = new Map(); // peerId -> DataConnection или { send, close }
+  let manualPC = null;
+  let manualDC = null;
+  let roomCode = '';
+  let maxPlayers = 4;
+  let localPlayer = { id: '', name: 'Игрок' };
+  let lobbyPlayers = [];
+  let hostGame = null;
+  let countdownStarted = false;
+
+  function genCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s = 'PKR-';
+    for (let i = 0; i < 4; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
+  }
+
+  function encodeSDP(desc) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(desc))));
+  }
+
+  function decodeSDP(str) {
+    return JSON.parse(decodeURIComponent(escape(atob(str.trim()))));
+  }
+
+  // --- РЕЖИМ 1: ОНЛАЙН / WI-FI (PeerJS) ---
+  function createOnlineRoom() {
+    if (typeof Peer === 'undefined') {
+      UIManager.toast('PeerJS не загружен (нет интернета). Используйте Офлайн P2P ключ!');
+      return;
+    }
+    mode = 'online_host';
+    countdownStarted = false;
+    connections.clear();
+    roomCode = genCode();
+    maxPlayers = Number(document.getElementById('mp-max-players').value) || 4;
+    const name = (document.getElementById('mp-name').value || 'Хост').trim();
+    localPlayer = { id: 'host', name };
+    lobbyPlayers = [{ id: 'host', name, isHost: true }];
+
+    UIManager.openLobby({ isManual: false, isHost: true, code: roomCode, maxPlayers });
+    UIManager.renderLobbyPlayers(lobbyPlayers, maxPlayers);
+
+    try {
+      peer = new Peer(roomCode, { debug: 0 });
+      peer.on('open', () => UIManager.toast(`Комната ${roomCode} создана!`));
+      peer.on('connection', conn => {
+        conn.on('open', () => {
+          conn.on('data', msg => handleHostMessage(conn.peer, conn, msg));
+        });
+        conn.on('close', () => removePeer(conn.peer));
+      });
+      peer.on('error', err => UIManager.toast(`Ошибка сети: ${err.type || err.message}`));
+    } catch (e) {
+      UIManager.toast('Не удалось инициализировать PeerJS');
+    }
+  }
+
+  function joinOnlineRoom() {
+    if (typeof Peer === 'undefined') {
+      UIManager.toast('PeerJS недоступен офлайн. Используйте Офлайн P2P ключ!');
+      return;
+    }
+    const targetCode = (document.getElementById('mp-join-code').value || '').trim().toUpperCase();
+    if (!targetCode) {
+      UIManager.toast('Введите код комнаты!');
+      return;
+    }
+    mode = 'online_client';
+    countdownStarted = false;
+    roomCode = targetCode;
+    const name = (document.getElementById('mp-name').value || 'Игрок').trim();
+    localPlayer = { id: 'p_' + Math.random().toString(36).slice(2, 7), name };
+
+    UIManager.openLobby({ isManual: false, isHost: false, code: roomCode, maxPlayers: 4 });
+    UIManager.toast('Подключение к комнате...');
+
+    peer = new Peer(undefined, { debug: 0 });
+    peer.on('open', () => {
+      const conn = peer.connect(roomCode, { reliable: true });
+      conn.on('open', () => {
+        connections.set('host', conn);
+        conn.send({ type: 'JOIN', id: localPlayer.id, name: localPlayer.name });
+        UIManager.toast('Подключено к хосту!');
+      });
+      conn.on('data', msg => handleClientMessage(msg));
+      conn.on('close', () => {
+        UIManager.toast('Соединение с хостом разорвано');
+        leaveRoom();
+      });
+    });
+    peer.on('error', () => UIManager.toast('Комната не найдена или нет связи'));
+  }
+
+  // --- РЕЖИМ 2: ОФЛАЙН P2P ЧЕРЕЗ СЖАТЫЙ SDP-КЛЮЧ (БЕЗ ИНТЕРНЕТА) ---
+  async function startManualHost() {
+    mode = 'manual_host';
+    countdownStarted = false;
+    connections.clear();
+    maxPlayers = 2; // Прямое 1-на-1 P2P соединение (при желании можно расширить)
+    const name = (document.getElementById('mp-name').value || 'Хост').trim();
+    localPlayer = { id: 'host', name };
+    lobbyPlayers = [{ id: 'host', name, isHost: true }];
+
+    UIManager.openLobby({ isManual: true, isHost: true, code: 'P2P-OFFLINE', maxPlayers });
+    UIManager.renderLobbyPlayers(lobbyPlayers, maxPlayers);
+
+    document.getElementById('sdp-step-label').textContent = 'Шаг 1 (Хост): Скопируйте ключ-приглашение и передайте другу';
+    document.getElementById('sdp-output').value = 'Генерация локального ICE/SDP ключа...';
+
+    manualPC = new RTCPeerConnection({ iceServers: [] });
+    manualDC = manualPC.createDataChannel('poker');
+    setupManualChannel(manualDC, 'peer_1', true);
+
+    const offer = await manualPC.createOffer();
+    await manualPC.setLocalDescription(offer);
+    await waitIceGathering(manualPC);
+    document.getElementById('sdp-output').value = encodeSDP(manualPC.localDescription);
+    UIManager.toast('Локальный ключ готов! Передайте его другу.');
+  }
+
+  function startManualClient() {
+    mode = 'manual_client';
+    countdownStarted = false;
+    const name = (document.getElementById('mp-name').value || 'Игрок').trim();
+    localPlayer = { id: 'p_' + Math.random().toString(36).slice(2, 7), name };
+    lobbyPlayers = [];
+
+    UIManager.openLobby({ isManual: true, isHost: false, code: 'P2P-OFFLINE', maxPlayers: 2 });
+    document.getElementById('sdp-step-label').textContent = 'Шаг 1 (Игрок): Вставьте ключ Хоста ниже и нажмите «Применить»';
+    document.getElementById('sdp-output').value = 'Здесь появится ваш ответный ключ...';
+    document.getElementById('sdp-input').value = '';
+  }
+
+  async function applyManualSDP() {
+    const raw = document.getElementById('sdp-input').value.trim();
+    if (!raw) {
+      UIManager.toast('Вставьте ключ в поле ввода!');
+      return;
+    }
+    try {
+      const desc = decodeSDP(raw);
+      if (mode === 'manual_host') {
+        await manualPC.setRemoteDescription(new RTCSessionDescription(desc));
+        UIManager.toast('Ответный ключ принят! Устанавливаем связь...');
+      } else if (mode === 'manual_client') {
+        manualPC = new RTCPeerConnection({ iceServers: [] });
+        manualPC.ondatachannel = ev => {
+          manualDC = ev.channel;
+          setupManualChannel(manualDC, 'host', false);
+        };
+        await manualPC.setRemoteDescription(new RTCSessionDescription(desc));
+        const answer = await manualPC.createAnswer();
+        await manualPC.setLocalDescription(answer);
+        await waitIceGathering(manualPC);
+        document.getElementById('sdp-output').value = encodeSDP(manualPC.localDescription);
+        document.getElementById('sdp-step-label').textContent = 'Шаг 2: Скопируйте этот ответный ключ и отправьте Хосту!';
+        UIManager.toast('Ответный ключ сгенерирован! Передайте его Хосту.');
+      }
+    } catch (err) {
+      UIManager.toast('Неверный формат ключа! Проверьте копирование.');
+    }
+  }
+
+  function waitIceGathering(pc) {
+    return new Promise(resolve => {
+      if (pc.iceGatheringState === 'complete') return resolve();
+      const timeout = setTimeout(resolve, 1800);
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === 'complete') {
+          clearTimeout(timeout);
+          resolve();
+        }
+      };
+    });
+  }
+
+  function setupManualChannel(dc, peerKey, isHost) {
+    const wrapper = {
+      send: obj => { if (dc.readyState === 'open') dc.send(JSON.stringify(obj)); },
+      close: () => dc.close()
+    };
+    dc.onopen = () => {
+      connections.set(peerKey, wrapper);
+      if (!isHost) {
+        wrapper.send({ type: 'JOIN', id: localPlayer.id, name: localPlayer.name });
+      }
+      UIManager.toast('Прямое P2P-соединение установлено!');
+    };
+    dc.onmessage = ev => {
+      const msg = JSON.parse(ev.data);
+      if (isHost) handleHostMessage(peerKey, wrapper, msg);
+      else handleClientMessage(msg);
+    };
+  }
+
+  // --- ОБРАБОТКА СООБЩЕНИЙ (HOST-AUTHORITATIVE) ---
+  function handleHostMessage(peerKey, conn, msg) {
+    if (msg.type === 'JOIN') {
+      if (lobbyPlayers.length >= maxPlayers) {
+        conn.send({ type: 'ERROR', text: 'Комната уже заполнена' });
+        return;
+      }
+      connections.set(msg.id, conn);
+      lobbyPlayers.push({ id: msg.id, name: msg.name, isHost: false });
+      broadcast({ type: 'LOBBY_SYNC', players: lobbyPlayers, maxPlayers });
+      UIManager.renderLobbyPlayers(lobbyPlayers, maxPlayers);
+
+      // Если подключились все запланированные игроки — автозапуск обратного отсчёта!
+      if (lobbyPlayers.length >= maxPlayers && !countdownStarted) {
+        triggerCountdown();
+      }
+    } else if (msg.type === 'PLAYER_ACTION' && hostGame) {
+      hostGame.handleAction(msg.playerId, msg.action, msg.amount);
+    }
+  }
+
+  function handleClientMessage(msg) {
+    if (msg.type === 'LOBBY_SYNC') {
+      lobbyPlayers = msg.players;
+      maxPlayers = msg.maxPlayers;
+      UIManager.renderLobbyPlayers(lobbyPlayers, maxPlayers);
+    } else if (msg.type === 'COUNTDOWN_START') {
+      runCountdownAnimation(() => {
+        UIManager.enterMultiplayerClientView();
+      });
+    } else if (msg.type === 'STATE_SYNC') {
+      UIManager.applyNetworkState(msg.snapshot, localPlayer.id);
+    } else if (msg.type === 'ANIM_EVENT') {
+      UIManager.applyNetworkEvent(msg.event, msg.snapshot, localPlayer.id);
+    } else if (msg.type === 'ERROR') {
+      UIManager.toast(msg.text);
+    }
+  }
+
+  function broadcast(payload) {
+    connections.forEach(conn => {
+      try { conn.send(payload); } catch (e) {}
+    });
+  }
+
+  function removePeer(peerKey) {
+    lobbyPlayers = lobbyPlayers.filter(p => p.id !== peerKey);
+    connections.delete(peerKey);
+    broadcast({ type: 'LOBBY_SYNC', players: lobbyPlayers, maxPlayers });
+    UIManager.renderLobbyPlayers(lobbyPlayers, maxPlayers);
+  }
+
+  function triggerCountdown() {
+    if (countdownStarted || lobbyPlayers.length < 2) return;
+    countdownStarted = true;
+    broadcast({ type: 'COUNTDOWN_START' });
+    runCountdownAnimation(() => {
+      startHostMultiplayerGame();
+    });
+  }
+
+  function runCountdownAnimation(onDone) {
+    const overlay = document.getElementById('countdown-overlay');
+    const numEl = document.getElementById('countdown-number');
+    overlay.classList.add('active');
+    let count = 3;
+
+    const tick = () => {
+      numEl.textContent = count > 0 ? String(count) : 'GO!';
+      gsap.fromTo(numEl, { scale: 1.9, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: 'back.out(1.7)' });
+      AudioEngine.sfx.countdown(count === 0);
+
+      if (count > 0) {
+        count--;
+        setTimeout(tick, 950);
+      } else {
+        setTimeout(() => {
+          overlay.classList.remove('active');
+          onDone();
+        }, 650);
+      }
+    };
+    tick();
+  }
+
+  function startHostMultiplayerGame() {
+    const players = lobbyPlayers.map(lp => ({
+      id: lp.id,
+      name: lp.name,
+      chips: 5000,
+      isHuman: lp.id === localPlayer.id,
+      isAI: false,
+      eliminated: false
+    }));
+
+    hostGame = UIManager.startHostedMPTable(players, localPlayer.id, (game) => {
+      // Рассылка индивидуального снимка состояния (каждый видит только свои карты!)
+      connections.forEach((conn, pid) => {
+        try {
+          conn.send({ type: 'STATE_SYNC', snapshot: game.getSnapshot(pid) });
+        } catch (e) {}
+      });
+    }, (ev, game) => {
+      connections.forEach((conn, pid) => {
+        try {
+          conn.send({ type: 'ANIM_EVENT', event: ev, snapshot: game.getSnapshot(pid) });
+        } catch (e) {}
+      });
+    });
+  }
+
+  function sendClientAction(action, amount) {
+    const hostConn = connections.get('host');
+    if (hostConn) {
+      hostConn.send({ type: 'PLAYER_ACTION', playerId: localPlayer.id, action, amount });
+    }
+  }
+
+  function leaveRoom() {
+    if (hostGame) { hostGame.stop(); hostGame = null; }
+    connections.forEach(c => { try { c.close(); } catch (e) {} });
+    connections.clear();
+    if (manualPC) { try { manualPC.close(); } catch (e) {} manualPC = null; }
+    if (peer) { try { peer.destroy(); } catch (e) {} peer = null; }
+    mode = null;
+    countdownStarted = false;
+    UIManager.showScreen('main-menu');
+  }
+
+  return {
+    createOnlineRoom,
+    joinOnlineRoom,
+    startManualHost,
+    startManualClient,
+    applyManualSDP,
+    triggerCountdown,
+    sendClientAction,
+    leaveRoom,
+    isClient: () => mode === 'online_client' || mode === 'manual_client',
+    isHost: () => mode === 'online_host' || mode === 'manual_host'
+  };
+})();
+
+/* ============================================================================
+   7. UIManager — ЭКОНОМИКА, ПРЕЛОАДЕР, МЕНЮ, HUD, ПРАВИЛА И УПРАВЛЕНИЕ
+   ============================================================================ */
+const UIManager = (() => {
+  const STORAGE_KEY = 'royal_holdem_3d_balance_v1';
+  const TABLES = [
+    { id: 'rookie',   tier: 'Лига I',   name: 'Новичок',    buyIn: 500,   sb: 10,  bb: 20,   bots: 4, diff: 'easy' },
+    { id: 'classic',  tier: 'Лига II',  name: 'Классика',   buyIn: 2500,  sb: 25,  bb: 50,   bots: 5, diff: 'medium' },
+    { id: 'pro',      tier: 'Лига III', name: 'Профи',      buyIn: 10000, sb: 100, bb: 200,  bots: 5, diff: 'medium' },
+    { id: 'high',     tier: 'Лига IV',  name: 'Хайроллер',  buyIn: 25000, sb: 250, bb: 500,  bots: 6, diff: 'hard' },
+    { id: 'vip',      tier: 'VIP Клуб', name: 'VIP Платинум', buyIn: 50000, sb: 500, bb: 1000, bots: 6, diff: 'hard' }
+  ];
+
+  const BOT_NAMES = ['Виктория', 'Маркус', 'Елена', 'Дон Карло', 'Алекс', 'София', 'Макс', 'Артур'];
+  const PERSONALITIES = ['tight', 'balanced', 'aggressive'];
+  const TIPS = [
+    'Совет: Позиция на баттоне позволяет видеть действия соперников до принятия решения.',
+    'Совет: Не бойтесь сбрасывать слабые руки на префлопе — дисциплина приносит банк.',
+    'Совет: Блеф работает лучше всего, когда на столе вышли опасные старшие карты.',
+    'Совет: При All-In с разными стеками автоматически формируются побочные банки (Side Pots).',
+    'Совет: Используйте быстрые кнопки «1/2 Пота» и «Пот» для мгновенного контроля размера банка.'
+  ];
+
+  let balance = loadBalance();
+  let currentGame = null;
+  let currentSnapshot = null;
+  let localPlayerId = 'human';
+  let activeTableConfig = null;
+  let seatElements = [];
+  let timerAnim = null;
+  let lastWinningCardIds = [];
+
+  function loadBalance() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved !== null && !isNaN(Number(saved))) return Math.max(0, Math.floor(Number(saved)));
+    } catch (e) {}
+    return 10000;
+  }
+
+  function saveBalance(val) {
+    balance = Math.max(0, Math.floor(val));
+    try { localStorage.setItem(STORAGE_KEY, String(balance)); } catch (e) {}
+    renderBalance();
+    renderTablesGrid();
+  }
+
+  function fmt(n) {
+    return '$' + Math.floor(n).toLocaleString('en-US');
+  }
+
+  function renderBalance() {
+    const el = document.getElementById('menu-balance');
+    if (el) el.textContent = fmt(balance);
+    const bonusBtn = document.getElementById('btn-bonus');
+    if (bonusBtn) {
+      // Показываем кнопку бонуса, если баланс $0 или не хватает на самый доступный стол ($500)
+      bonusBtn.classList.toggle('visible', balance < TABLES[0].buyIn);
+    }
+  }
+
+  function claimBonus() {
+    AudioEngine.sfx.bonus();
+    const startVal = balance;
+    const targetVal = balance + 1000;
+    const obj = { v: startVal };
+    gsap.to(obj, {
+      v: targetVal,
+      duration: 0.75,
+      ease: 'power2.out',
+      onUpdate: () => {
+        document.getElementById('menu-balance').textContent = fmt(obj.v);
+      },
+      onComplete: () => {
+        saveBalance(targetVal);
+        toast('🎁 Начислен бонус +$1,000!');
+      }
+    });
+  }
+
+  function renderTablesGrid() {
+    const grid = document.getElementById('tables-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    TABLES.forEach(t => {
+      const locked = balance < t.buyIn;
+      const card = document.createElement('div');
+      card.className = `table-card ${locked ? 'locked' : ''}`;
+      card.innerHTML = `
+        <div>
+          <div class="table-tier">${t.tier}</div>
+          <div class="table-name gold-text">${t.name}</div>
+        </div>
+        <div class="table-stats">
+          <div>Блайнды: <strong>${fmt(t.sb)} / ${fmt(t.bb)}</strong></div>
+          <div>Мест за столом: <strong>${t.bots + 1}</strong></div>
+        </div>
+        <div>
+          <div style="font-size:10px; color:var(--text-muted);">Вход (Buy-In)</div>
+          <div class="table-buyin">${fmt(t.buyIn)}</div>
+        </div>
+        ${locked ? `
+          <div class="lock-overlay">
+            <div class="lock-icon">🔒</div>
+            <div class="lock-req">Нужно ${fmt(t.buyIn)}</div>
+          </div>
+        ` : ''}
+      `;
+      if (!locked) {
+        card.onclick = () => startCashTable(t);
+      } else {
+        card.onclick = () => toast(`Недостаточно средств! Требуется ${fmt(t.buyIn)}.`);
+      }
+      grid.appendChild(card);
+    });
+  }
+
+  function buildRulesTable() {
+    const grid = document.getElementById('rules-hands-grid');
+    if (!grid) return;
+    const examples = [
+      { name: '1. Роял-Флеш', cards: [['A','s'],['K','s'],['Q','s'],['J','s'],['10','s']] },
+      { name: '2. Стрит-Флеш', cards: [['9','h'],['8','h'],['7','h'],['6','h'],['5','h']] },
+      { name: '3. Каре', cards: [['Q','s'],['Q','h'],['Q','d'],['Q','c'],['A','s']] },
+      { name: '4. Фулл-Хаус', cards: [['K','s'],['K','h'],['K','d'],['9','c'],['9','s']] },
+      { name: '5. Флеш', cards: [['A','d'],['J','d'],['8','d'],['5','d'],['2','d']] },
+      { name: '6. Стрит', cards: [['10','c'],['9','d'],['8','h'],['7','s'],['6','c']] },
+      { name: '7. Сет (Тройка)', cards: [['7','s'],['7','h'],['7','d'],['K','c'],['4','s']] },
+      { name: '8. Две пары', cards: [['J','s'],['J','d'],['4','c'],['4','h'],['A','s']] },
+      { name: '9. Пара', cards: [['10','h'],['10','s'],['A','d'],['8','c'],['3','h']] },
+      { name: '10. Старшая карта', cards: [['A','s'],['Q','d'],['9','c'],['6','h'],['2','s']] }
+    ];
+    const suitSym = { s: '♠', h: '♥', d: '♦', c: '♣' };
+    grid.innerHTML = examples.map(ex => `
+      <div class="hand-row">
+        <span style="font-weight:700;">${ex.name}</span>
+        <div class="hand-cards-mini">
+          ${ex.cards.map(([r, s]) => `<span class="mini-card ${s === 'h' || s === 'd' ? 'red' : ''}">${r}${suitSym[s]}</span>`).join('')}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function showScreen(id) {
+    document.querySelectorAll('.screen-layer').forEach(s => s.classList.remove('active'));
+    const target = document.getElementById(id);
+    if (target) target.classList.add('active');
+    if (id !== 'game-hud') {
+      document.getElementById('seats-overlay').innerHTML = '';
+      document.getElementById('hand-banner').classList.remove('visible');
+    }
+  }
+
+  function switchTab(tabId, btn) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+  }
+
+  function openModal(id) { document.getElementById(id).classList.add('open'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+  function toast(text) {
+    const c = document.getElementById('toast-container');
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.textContent = text;
+    c.appendChild(el);
+    setTimeout(() => {
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 300);
+    }, 2600);
+  }
+
+  function copyText(text) {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => toast('Скопировано в буфер обмена!')).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  }
+
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); toast('Скопировано!'); } catch (e) {}
+    ta.remove();
+  }
+
+  // --- ЗАПУСК СТОЛОВ ---
+  function startCashTable(tableCfg) {
+    if (balance < tableCfg.buyIn) {
+      toast(`Недостаточно средств для входа!`);
+      return;
+    }
+    // Списываем Buy-In с общего баланса в стек за столом
+    saveBalance(balance - tableCfg.buyIn);
+    activeTableConfig = { ...tableCfg, mode: 'cash' };
+
+    const players = [{
+      id: 'human', name: 'Вы', chips: tableCfg.buyIn, isHuman: true, isAI: false, eliminated: false
+    }];
+    for (let i = 0; i < tableCfg.bots; i++) {
+      players.push({
+        id: 'bot_' + i,
+        name: BOT_NAMES[i % BOT_NAMES.length],
+        chips: tableCfg.buyIn,
+        isHuman: false,
+        isAI: true,
+        personality: PERSONALITIES[i % PERSONALITIES.length],
+        eliminated: false
+      });
+    }
+    launchLocalTable(players, activeTableConfig);
+  }
+
+  function startCustomGame() {
+    const name = (document.getElementById('custom-player-name').value || 'Игрок').trim();
+    const botCount = Number(document.getElementById('custom-ai-count').value) || 5;
+    const [sb, bb] = document.getElementById('custom-blinds').value.split(',').map(Number);
+    const stack = Number(document.getElementById('custom-stack').value) || 5000;
+    const diff = document.getElementById('custom-difficulty').value;
+
+    activeTableConfig = { name: 'Свой стол', sb, bb, buyIn: stack, diff, mode: 'custom' };
+    const players = [{
+      id: 'human', name, chips: stack, isHuman: true, isAI: false, eliminated: false
+    }];
+    for (let i = 0; i < botCount; i++) {
+      players.push({
+        id: 'bot_' + i,
+        name: BOT_NAMES[i % BOT_NAMES.length],
+        chips: stack,
+        isHuman: false,
+        isAI: true,
+        personality: PERSONALITIES[i % PERSONALITIES.length],
+        eliminated: false
+      });
+    }
+    launchLocalTable(players, activeTableConfig);
+  }
+
+  function launchLocalTable(players, cfg) {
+    localPlayerId = 'human';
+    Scene3D.configureSeats(players.length);
+    createSeatOverlays(players.length);
+    showScreen('game-hud');
+
+    document.getElementById('hud-table-name').textContent = cfg.name;
+    document.getElementById('hud-blinds').textContent = `Блайнды: ${fmt(cfg.sb)} / ${fmt(cfg.bb)}`;
+
+    if (currentGame) currentGame.stop();
+    currentGame = new PokerEngine.TableGame({
+      mode: cfg.mode,
+      tableName: cfg.name,
+      sb: cfg.sb,
+      bb: cfg.bb,
+      difficulty: cfg.diff,
+      players,
+      onStateUpdate: snap => renderTableState(snap, localPlayerId),
+      onEvent: ev => handleGameEvent(ev, currentGame.getSnapshot(localPlayerId))
+    });
+    currentGame.running = true;
+    currentGame.startNextHand();
+  }
+
+  // Запуск MP-стола на стороне хоста
+  function startHostedMPTable(players, myId, onSync, onEvt) {
+    localPlayerId = myId;
+    activeTableConfig = { name: 'P2P Комната', sb: 25, bb: 50, mode: 'mp_host' };
+    Scene3D.configureSeats(players.length);
+    createSeatOverlays(players.length);
+    showScreen('game-hud');
+    document.getElementById('hud-table-name').textContent = 'P2P Комната (Хост)';
+    document.getElementById('hud-blinds').textContent = 'Блайнды: $25 / $50';
+
+    if (currentGame) currentGame.stop();
+    currentGame = new PokerEngine.TableGame({
+      mode: 'mp_host',
+      tableName: 'P2P Комната',
+      sb: 25,
+      bb: 50,
+      players,
+      onStateUpdate: () => {
+        renderTableState(currentGame.getSnapshot(localPlayerId), localPlayerId);
+        onSync(currentGame);
+      },
+      onEvent: ev => {
+        handleGameEvent(ev, currentGame.getSnapshot(localPlayerId));
+        onEvt(ev, currentGame);
+      }
+    });
+    currentGame.running = true;
+    currentGame.startNextHand();
+    return currentGame;
+  }
+
+  function enterMultiplayerClientView() {
+    activeTableConfig = { name: 'P2P Комната', mode: 'mp_client' };
+    showScreen('game-hud');
+    document.getElementById('hud-table-name').textContent = 'P2P Комната (Игрок)';
+  }
+
+  function applyNetworkState(snapshot, myId) {
+    localPlayerId = myId;
+    if (seatElements.length !== snapshot.players.length) {
+      Scene3D.configureSeats(snapshot.players.length);
+      createSeatOverlays(snapshot.players.length);
+    }
+    renderTableState(snapshot, myId);
+  }
+
+  function applyNetworkEvent(ev, snapshot, myId) {
+    localPlayerId = myId;
+    handleGameEvent(ev, snapshot);
+  }
+
+  // --- ЛОББИ UI ---
+  function openLobby({ isManual, isHost, code, maxPlayers }) {
+    showScreen('lobby-screen');
+    document.getElementById('lobby-title').textContent = isManual ? 'Офлайн P2P Лобби' : 'Онлайн Лобби';
+    document.getElementById('lobby-online-block').style.display = isManual ? 'none' : 'block';
+    document.getElementById('lobby-manual-block').style.display = isManual ? 'flex' : 'none';
+    document.getElementById('lobby-code-display').textContent = code;
+    document.getElementById('btn-force-start-mp').style.display = isHost ? 'inline-flex' : 'none';
+    document.getElementById('lobby-counter').textContent = `Игроков: 1 / ${maxPlayers}`;
+  }
+
+  function renderLobbyPlayers(players, maxP) {
+    document.getElementById('lobby-counter').textContent = `Игроков: ${players.length} / ${maxP}`;
+    const list = document.getElementById('lobby-players');
+    list.innerHTML = players.map(p => `
+      <div class="lobby-player-item">
+        <span>${p.isHost ? '👑' : '🃏'} ${p.name}</span>
+        <span class="badge-ready">Готов</span>
+      </div>
+    `).join('');
+  }
+
+  // --- 2D-МЕТКИ ИГРОКОВ И ИГРОВОЙ HUD ---
+  function createSeatOverlays(count) {
+    const overlay = document.getElementById('seats-overlay');
+    overlay.innerHTML = '';
+    seatElements = [];
+    for (let i = 0; i < count; i++) {
+      const div = document.createElement('div');
+      div.className = 'seat-badge';
+      div.innerHTML = `
+        <div class="seat-action-tag"></div>
+        <div class="seat-dealer-btn">D</div>
+        <div class="seat-name">Игрок</div>
+        <div class="seat-chips">$0</div>
+        <div class="seat-timer-bar"></div>
+      `;
+      overlay.appendChild(div);
+      seatElements.push(div);
+    }
+    updateSeatOverlayPositions();
+  }
+
+  function updateSeatOverlayPositions() {
+    const positions = Scene3D.getSeatPositions();
+    positions.forEach((pos, idx) => {
+      const el = seatElements[idx];
+      if (!el) return;
+      const p2d = Scene3D.projectTo2D(pos.seat);
+      el.style.left = `${p2d.x}px`;
+      el.style.top = `${p2d.y}px`;
+    });
+  }
+
+  function renderTableState(snap, myId) {
+    currentSnapshot = snap;
+    updateSeatOverlayPositions();
+
+    const streetNames = {
+      IDLE: 'ПОДГОТОВКА', PREFLOP: 'ПРЕФЛОП', FLOP: 'ФЛОП',
+      TURN: 'ТЁРН', RIVER: 'РИВЕР', SHOWDOWN: 'ШОУДАУН'
+    };
+    document.getElementById('hud-street-label').textContent = streetNames[snap.street] || snap.street;
+    document.getElementById('hud-pot-amount').textContent = fmt(snap.pot);
+    document.getElementById('hud-blinds').textContent = `Блайнды: ${fmt(snap.sb)} / ${fmt(snap.bb)}`;
+
+    Scene3D.updateSeatStacks(snap.players);
+
+    // Обновляем бейджи игроков
+    snap.players.forEach((p, idx) => {
+      const el = seatElements[idx];
+      if (!el) return;
+      el.style.display = p.eliminated ? 'none' : 'block';
+      el.classList.toggle('active-turn', idx === snap.activeIndex);
+      el.classList.toggle('folded', p.folded);
+      el.classList.toggle('winner', p.isWinner);
+      el.querySelector('.seat-name').textContent = p.name;
+      el.querySelector('.seat-chips').textContent = fmt(p.chips);
+      el.querySelector('.seat-dealer-btn').classList.toggle('show', idx === snap.dealerIndex);
+
+      const tag = el.querySelector('.seat-action-tag');
+      if (p.lastAction) {
+        tag.textContent = p.bet > 0 && p.lastAction !== 'FOLD' ? `${p.lastAction} ${fmt(p.bet)}` : p.lastAction;
+        tag.className = 'seat-action-tag show ' + p.lastAction.toLowerCase().replace('-', '');
+      } else {
+        tag.className = 'seat-action-tag';
+      }
+
+      const tbar = el.querySelector('.seat-timer-bar');
+      if (idx === snap.activeIndex) {
+        if (timerAnim) timerAnim.kill();
+        timerAnim = gsap.fromTo(tbar, { width: '100%' }, { width: '0%', duration: 25, ease: 'none' });
+      } else {
+        tbar.style.width = '0%';
+      }
+    });
+
+    // Обновляем подсказку силы руки локального игрока
+    const me = snap.players.find(p => p.id === myId);
+    if (me && me.cards && me.cards.length === 2 && !me.folded) {
+      const ev = PokerEngine.evaluateBestHand([...me.cards, ...snap.communityCards]);
+      document.getElementById('my-hand-strength').textContent = ev.name;
+    } else {
+      document.getElementById('my-hand-strength').textContent = me && me.folded ? 'Карты сброшены' : '—';
+    }
+
+    // Обновляем 2D-виджеты карт дилера (слева сверху) и игрока (справа сверху)
+    render2DCardsHUD(snap, myId);
+
+    // Показываем панель действий, если сейчас ход локального игрока
+    const actionBar = document.getElementById('action-bar');
+    const isMyTurn = snap.activeIndex >= 0 && snap.players[snap.activeIndex]?.id === myId;
+    actionBar.classList.toggle('visible', isMyTurn);
+
+    if (isMyTurn && me) {
+      const toCall = Math.max(0, snap.currentBet - me.bet);
+      const callBtn = document.getElementById('btn-call');
+      callBtn.textContent = toCall === 0 ? 'Чек (Check)' : `Колл ${fmt(Math.min(toCall, me.chips))}`;
+
+      const slider = document.getElementById('bet-slider');
+      const minTarget = snap.currentBet === 0 ? snap.bb : snap.currentBet + snap.minRaise;
+      const maxTarget = me.bet + me.chips;
+      const canRaise = maxTarget > snap.currentBet;
+
+      document.getElementById('raise-controls').style.display = canRaise ? 'flex' : 'none';
+      const raiseBtn = document.getElementById('btn-raise');
+      raiseBtn.style.display = canRaise ? 'inline-flex' : 'none';
+
+      if (canRaise) {
+        const effMin = Math.min(minTarget, maxTarget);
+        slider.min = effMin;
+        slider.max = maxTarget;
+        slider.step = Math.max(1, Math.floor(snap.sb));
+        slider.value = effMin;
+        onBetSliderChange(effMin);
+      }
+    }
+  }
+
+  // Отрисовка 2D-карт стола (слева сверху) и своих карт (справа сверху)
+  function render2DCardsHUD(snap, myId) {
+    const boardContainer = document.getElementById('hud-board-2d-cards');
+    const myContainer = document.getElementById('hud-my-2d-cards');
+    if (!boardContainer || !myContainer || !snap) return;
+
+    const suitMap = { s: '♠', h: '♥', d: '♦', c: '♣' };
+    const rankMap = { 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
+    const winSet = new Set(lastWinningCardIds || []);
+
+    const makeCardHTML = (card, isFolded = false) => {
+      if (!card) return '<div class="card-2d empty">•</div>';
+      const isRed = card.suit === 'h' || card.suit === 'd';
+      const r = rankMap[card.rank] || String(card.rank);
+      const s = suitMap[card.suit] || '';
+      const cls = [
+        'card-2d',
+        isRed ? 'red' : '',
+        isFolded ? 'folded' : '',
+        winSet.has(card.id) ? 'win-glow' : ''
+      ].filter(Boolean).join(' ');
+      return `<div class="${cls}"><span class="c-rank">${r}</span><span class="c-suit">${s}</span></div>`;
+    };
+
+    // 5 слотов для общих карт стола (Флоп, Тёрн, Ривер)
+    const boardCards = snap.communityCards || [];
+    let boardHTML = '';
+    for (let i = 0; i < 5; i++) {
+      boardHTML += makeCardHTML(boardCards[i] || null, false);
+    }
+    boardContainer.innerHTML = boardHTML;
+
+    // 2 слота для карманных карт локального игрока
+    const me = snap.players.find(p => p.id === myId);
+    const myCards = (me && me.cards) ? me.cards : [];
+    let myHTML = '';
+    for (let i = 0; i < 2; i++) {
+      myHTML += makeCardHTML(myCards[i] || null, Boolean(me && me.folded));
+    }
+    myContainer.innerHTML = myHTML;
+  }
+
+  function onBetSliderChange(val) {
+    const num = Math.floor(Number(val));
+    document.getElementById('bet-slider-val').textContent = fmt(num);
+    const raiseBtn = document.getElementById('btn-raise');
+    const isAllIn = currentSnapshot && currentSnapshot.players[currentSnapshot.activeIndex] &&
+      num >= currentSnapshot.players[currentSnapshot.activeIndex].bet + currentSnapshot.players[currentSnapshot.activeIndex].chips;
+    raiseBtn.textContent = isAllIn ? `All-In ${fmt(num)}` : (currentSnapshot?.currentBet === 0 ? `Ставка ${fmt(num)}` : `Рейз ${fmt(num)}`);
+  }
+
+  function setQuickBet(kind) {
+    if (!currentSnapshot) return;
+    const me = currentSnapshot.players[currentSnapshot.activeIndex];
+    if (!me) return;
+    const slider = document.getElementById('bet-slider');
+    const maxVal = Number(slider.max);
+    const minVal = Number(slider.min);
+    let target = minVal;
+    if (kind === 'half') target = currentSnapshot.currentBet + Math.floor(currentSnapshot.pot * 0.5);
+    else if (kind === 'pot') target = currentSnapshot.currentBet + currentSnapshot.pot;
+    else if (kind === 'allin') target = maxVal;
+    target = Math.max(minVal, Math.min(maxVal, target));
+    slider.value = target;
+    onBetSliderChange(target);
+  }
+
+  function sendHumanAction(action) {
+    const sliderVal = Number(document.getElementById('bet-slider').value);
+    const amount = action === 'raise' ? sliderVal : 0;
+    document.getElementById('action-bar').classList.remove('visible');
+
+    if (NetworkManager.isClient()) {
+      NetworkManager.sendClientAction(action, amount);
+    } else if (currentGame) {
+      currentGame.handleAction(localPlayerId, action, amount);
+    }
+  }
+
+  function showHandBanner(text, duration = 2600) {
+    const el = document.getElementById('hand-banner');
+    el.textContent = text;
+    el.classList.add('visible');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('visible'), duration);
+  }
+
+  function handleGameEvent(ev, snap) {
+    if (!ev) return;
+    if (ev.type === 'HAND_START') {
+      lastWinningCardIds = [];
+      render2DCardsHUD(snap, localPlayerId);
+    } else if (ev.type === 'DEAL_HOLE_CARDS') {
+      lastWinningCardIds = [];
+      Scene3D.animateDealHoleCards(snap, localPlayerId);
+      render2DCardsHUD(snap, localPlayerId);
+    } else if (ev.type === 'DEAL_COMMUNITY') {
+      Scene3D.animateCommunityCards(snap.communityCards);
+      render2DCardsHUD(snap, localPlayerId);
+      showHandBanner(`Открыт ${ev.street === 'FLOP' ? 'Флоп' : ev.street === 'TURN' ? 'Тёрн' : 'Ривер'}`, 1400);
+    } else if (ev.type === 'CHIPS_BET') {
+      Scene3D.animateChipBet(ev.seatIdx, ev.amount);
+    } else if (ev.type === 'PLAYER_FOLD') {
+      Scene3D.animateFold(ev.seatIdx);
+    } else if (ev.type === 'PLAYER_CHECK') {
+      AudioEngine.sfx.check();
+    } else if (ev.type === 'GATHER_POT') {
+      Scene3D.animateGatherPot(snap.pot);
+    } else if (ev.type === 'TURN_START') {
+      const pos = Scene3D.getSeatPositions()[ev.seatIdx];
+      if (pos) Scene3D.triggerDealerAnim('invite', pos.seat.x);
+      if (snap.players[ev.seatIdx]?.id === localPlayerId) {
+        AudioEngine.sfx.timerTick();
+      }
+    } else if (ev.type === 'SHOWDOWN') {
+      lastWinningCardIds = ev.winningCardIds || [];
+      render2DCardsHUD(snap, localPlayerId);
+      Scene3D.animateShowdown(snap, ev.winningCardIds, ev.winners, ev.revealAll);
+      if (ev.winners && ev.winners.length > 0) {
+        const msg = ev.winners.map(w => `🏆 ${w.name} выиграл ${fmt(w.amount)} (${w.handName})`).join(' | ');
+        showHandBanner(msg, 3800);
+      }
+    } else if (ev.type === 'HUMAN_BUSTED') {
+      document.getElementById('endgame-title').textContent = 'Фишки закончились';
+      document.getElementById('endgame-desc').textContent =
+        activeTableConfig?.mode === 'cash' && balance < TABLES[0].buyIn
+          ? 'Вы проиграли стек за этим столом. Вернитесь в меню, чтобы забрать бесплатный бонус +$1,000!'
+          : 'Ваш стек за этим столом обнулился. Вы можете начать новую партию или вернуться в меню.';
+      document.getElementById('btn-endgame-action').textContent = 'В меню';
+      openModal('endgame-modal');
+    } else if (ev.type === 'TABLE_FINISHED') {
+      document.getElementById('endgame-title').textContent = '🏆 Победа за столом!';
+      document.getElementById('endgame-desc').textContent = ev.winner
+        ? `${ev.winner.name} собрал все фишки стола (${fmt(ev.winner.chips)})!`
+        : 'Партия завершена.';
+      document.getElementById('btn-endgame-action').textContent = 'Забрать выигрыш';
+      openModal('endgame-modal');
+    }
+  }
+
+  function handleEndgameAction() {
+    closeModal('endgame-modal');
+    leaveTable();
+  }
+
+  function leaveTable() {
+    closeModal('endgame-modal');
+    // Возвращаем оставшийся стек на баланс в режиме столов казино
+    if (currentGame && activeTableConfig?.mode === 'cash') {
+      const me = currentGame.players.find(p => p.id === localPlayerId);
+      if (me && me.chips > 0) {
+        saveBalance(balance + me.chips);
+        toast(`Стек ${fmt(me.chips)} возвращён на ваш баланс!`);
+      }
+    }
+    if (currentGame) {
+      currentGame.stop();
+      currentGame = null;
+    }
+    if (NetworkManager.isClient() || NetworkManager.isHost()) {
+      NetworkManager.leaveRoom();
+    }
+    Scene3D.clearTableObjects();
+    showScreen('main-menu');
+  }
+
+  // --- ИНИЦИАЛИЗАЦИЯ И ПРЕЛОАДЕР ---
+  async function boot() {
+    OrientationManager.init();
+    renderBalance();
+    renderTablesGrid();
+    buildRulesTable();
+
+    document.getElementById('btn-bonus').addEventListener('click', claimBonus);
+    document.getElementById('custom-ai-count').addEventListener('input', e => {
+      const n = Number(e.target.value);
+      document.getElementById('custom-ai-count-val').textContent = `${n} (всего ${n + 1} мест)`;
+    });
+
+    // Смена советов на экране загрузки
+    let tipIdx = 0;
+    const tipEl = document.getElementById('loader-tip');
+    const tipTimer = setInterval(() => {
+      tipIdx = (tipIdx + 1) % TIPS.length;
+      tipEl.style.opacity = '0';
+      setTimeout(() => {
+        tipEl.textContent = TIPS[tipIdx];
+        tipEl.style.opacity = '1';
+      }, 280);
+    }, 2400);
+
+    const setProgress = (pct, stage) => {
+      document.getElementById('loader-bar').style.width = `${pct}%`;
+      document.getElementById('loader-percent').textContent = `${pct}%`;
+      document.getElementById('loader-stage').textContent = stage;
+    };
+
+    try {
+      setProgress(10, 'Инициализация WebGL...');
+      await Scene3D.init(setProgress);
+      setProgress(100, 'Добро пожаловать в клуб!');
+    } catch (err) {
+      setProgress(100, 'Запуск интерфейса...');
+    }
+
+    setTimeout(() => {
+      clearInterval(tipTimer);
+      showScreen('main-menu');
+    }, 550);
+
+    window.addEventListener('resize', () => {
+      setTimeout(updateSeatOverlayPositions, 120);
+    });
+  }
+
+  return {
+    boot,
+    showScreen,
+    switchTab,
+    openModal,
+    closeModal,
+    toast,
+    copyText,
+    startCustomGame,
+    startHostedMPTable,
+    enterMultiplayerClientView,
+    applyNetworkState,
+    applyNetworkEvent,
+    openLobby,
+    renderLobbyPlayers,
+    onBetSliderChange,
+    setQuickBet,
+    sendHumanAction,
+    handleEndgameAction,
+    leaveTable
+  };
+})();
+
+// Запуск приложения после загрузки DOM
+window.addEventListener('DOMContentLoaded', () => {
+  UIManager.boot();
+});
+</script>
 </body>
 </html>
