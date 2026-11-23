@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>ROYAL HOLD'EM 3D — Техасский Холдем</title>
@@ -54,6 +54,17 @@ html, body {
   color: var(--text-main);
   font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
   touch-action: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+/* Защита от автоувеличения на iOS/Android при фокусе на полях ввода (минимум 16px) */
+input, textarea, select {
+  font-size: 16px;
+  touch-action: manipulation;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* ==========================================================================
@@ -538,12 +549,13 @@ html, body {
 
 .form-control {
   width: 100%;
-  padding: 7px 10px;
+  padding: 6px 10px;
   border-radius: 8px;
   border: 1px solid rgba(212, 175, 55, 0.35);
   background: rgba(7, 14, 12, 0.9);
   color: var(--text-main);
-  font-size: clamp(12px, 1.6vh, 14px);
+  font-size: 16px;
+  line-height: 1.25;
   outline: none;
 }
 
@@ -641,7 +653,8 @@ input[type="range"] {
   height: 64px;
   resize: none;
   font-family: monospace;
-  font-size: 11px;
+  font-size: 16px;
+  line-height: 1.2;
   padding: 6px;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.55);
@@ -1257,7 +1270,7 @@ input[type="range"] {
         </div>
       </div>
 
-      <div class="balance-widget">
+      <div class="balance-widget" id="balance-widget">
         <div>
           <div class="balance-label">Ваш баланс</div>
           <div id="menu-balance" class="balance-value">$10,000</div>
@@ -1472,6 +1485,8 @@ input[type="range"] {
         <span id="my-hand-strength" class="my-hand-rank">—</span>
       </div>
 
+      <button id="btn-mp-rebuy" class="btn btn-gold" style="display:none; padding: 10px 18px; font-size: 14px;" onclick="UIManager.requestMultiplayerRestart()">🔄 Начать заново (+$20,000)</button>
+
       <div id="action-bar" class="action-bar">
         <div class="raise-controls" id="raise-controls">
           <button class="btn quick-bet-btn" onclick="UIManager.setQuickBet('half')">1/2 Пота</button>
@@ -1562,6 +1577,28 @@ input[type="range"] {
       </div>
     </div>
   </div>
+
+  <!-- ======================================================================
+       МОДАЛЬНОЕ ОКНО: СКРЫТАЯ НАСТРОЙКА БАЛАНСА
+       ====================================================================== -->
+  <div id="secret-balance-modal" class="modal-backdrop">
+    <div class="glass-panel modal-card" style="max-width: 380px;">
+      <div class="modal-header">
+        <h2>💎 Настройка баланса</h2>
+        <button class="btn btn-icon" onclick="UIManager.closeModal('secret-balance-modal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Введите желаемый баланс ($)</label>
+          <input type="number" id="secret-balance-input" class="form-control" min="0" max="999999999" step="100" placeholder="Например: 50000">
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:4px;">
+          <button class="btn" onclick="UIManager.closeModal('secret-balance-modal')">Отмена</button>
+          <button class="btn btn-gold" onclick="UIManager.confirmSecretBalance()">Подтвердить</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1589,7 +1626,22 @@ const OrientationManager = (() => {
   let logicalWidth = window.innerWidth;
   let logicalHeight = window.innerHeight;
 
-  function updateLayout() {
+  function isTextInputFocused() {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (tag === 'INPUT') {
+      const type = (el.type || 'text').toLowerCase();
+      return type !== 'range' && type !== 'checkbox' && type !== 'radio' && type !== 'button';
+    }
+    return false;
+  }
+
+  function updateLayout(force = false) {
+    // Не пересчитываем и не масштабируем сцену, пока открыта экранная клавиатура ввода текста
+    if (!force && isTextInputFocused()) return;
+
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
@@ -1612,43 +1664,87 @@ const OrientationManager = (() => {
     if (typeof Scene3D !== 'undefined' && Scene3D.resize) {
       Scene3D.resize(logicalWidth, logicalHeight);
     }
+    if (typeof UIManager !== 'undefined' && UIManager.updateSeatOverlayPositions) {
+      UIManager.updateSeatOverlayPositions();
+    }
   }
 
-  // Пересчёт координат касания/клика в локальные координаты повёрнутого контейнера
+  async function toggleFullscreen() {
+    try {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        const el = document.documentElement;
+        if (el.requestFullscreen) await el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+        if (screen.orientation && screen.orientation.lock) {
+          try { await screen.orientation.lock('landscape'); } catch (e) {}
+        }
+      } else {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+      }
+    } catch (e) {}
+    setTimeout(() => updateLayout(true), 120);
+  }
+
   function mapPointerToLogical(clientX, clientY) {
-    if (!isRotated) {
-      return { x: clientX, y: clientY };
-    }
-    // При rotate(90deg) по часовой стрелке:
-    // screen Y -> local X, (viewportWidth - screen X) -> local Y
+    if (!isRotated) return { x: clientX, y: clientY };
     return {
       x: clientY,
       y: window.innerWidth - clientX
     };
   }
 
-  async function toggleFullscreen() {
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-        if (screen.orientation && screen.orientation.lock) {
-          await screen.orientation.lock('landscape-primary').catch(() => {
-            screen.orientation.lock('landscape').catch(() => {});
-          });
-        }
-      } else {
-        await document.exitFullscreen();
+  function initZoomProtection() {
+    // Блокировка жестов масштабирования (pinch-to-zoom) в Safari/iOS
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(evt => {
+      document.addEventListener(evt, e => e.preventDefault(), { passive: false });
+    });
+
+    // Блокировка масштабирования двумя пальцами на сенсорных экранах
+    document.addEventListener('touchmove', e => {
+      if (e.touches && e.touches.length > 1) {
+        e.preventDefault();
       }
-    } catch (err) {
-      // На iOS Safari Fullscreen API ограничен — работает CSS-фоллбэк rotate(90deg)
-    }
-    setTimeout(updateLayout, 150);
+    }, { passive: false });
+
+    // Блокировка зума по двойному тапу
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', e => {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300 && !isTextInputFocused()) {
+        e.preventDefault();
+      }
+      lastTouchEnd = now;
+    }, { passive: false });
+
+    // Блокировка масштабирования колёсиком / трекпадом (Ctrl/Cmd + Wheel)
+    window.addEventListener('wheel', e => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    // Блокировка горячих клавиш увеличения (Ctrl/Cmd + '+' / '-')
+    window.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '0'].includes(e.key)) {
+        e.preventDefault();
+      }
+    });
+
+    // Сброс возможного сдвига viewport после закрытия мобильной клавиатуры
+    document.addEventListener('focusout', () => {
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        updateLayout(true);
+      }, 100);
+    });
   }
 
   function init() {
-    updateLayout();
-    window.addEventListener('resize', updateLayout);
-    window.addEventListener('orientationchange', () => setTimeout(updateLayout, 120));
+    initZoomProtection();
+    updateLayout(true);
+    window.addEventListener('resize', () => updateLayout(false));
+    window.addEventListener('orientationchange', () => setTimeout(() => updateLayout(true), 120));
   }
 
   return {
@@ -2105,6 +2201,32 @@ const PokerEngine = (() => {
       clearTimeout(this.aiTimerId);
     }
 
+    // Возвращение проигравшего игрока за онлайн-стол с начислением +$20,000
+    revivePlayer(playerId, amount = 20000) {
+      const p = this.players.find(pl => pl.id === playerId);
+      if (!p) return false;
+      if (p.chips > 0 && !p.eliminated) return false;
+
+      p.chips += amount;
+      p.eliminated = false;
+      p.allIn = false;
+      p.folded = this.running && this.street !== 'IDLE';
+      p.lastAction = '+$20K';
+
+      this.onEvent({ type: 'PLAYER_REBUY', playerId: p.id, name: p.name, amount });
+      this.onStateUpdate(this.getSnapshot());
+
+      // Если партия останавливалась из-за нехватки активных игроков — запускаем новую раздачу
+      const alive = this.players.filter(pl => !pl.eliminated && pl.chips > 0);
+      if (!this.running && alive.length >= 2) {
+        this.running = true;
+        setTimeout(() => {
+          if (this.running) this.startNextHand();
+        }, 900);
+      }
+      return true;
+    }
+
     getActivePlayers() {
       return this.players.filter(p => !p.eliminated && p.chips > 0);
     }
@@ -2143,6 +2265,7 @@ const PokerEngine = (() => {
 
       if (alive.length < 2) {
         this.running = false;
+        this.onStateUpdate(this.getSnapshot());
         this.onEvent({ type: 'TABLE_FINISHED', winner: alive[0] || null });
         return;
       }
@@ -2201,9 +2324,12 @@ const PokerEngine = (() => {
       this.onStateUpdate(this.getSnapshot());
 
       // Первый ход на префлопе: слева от BB (в Heads-Up — дилер/SB)
-      const firstToAct = alive.length === 2
+      let firstToAct = alive.length === 2
         ? sbIdx
         : this.nextSeatIndex(bbIdx, p => !p.eliminated && !p.folded && !p.allIn);
+      if (firstToAct !== -1 && (this.players[firstToAct].allIn || this.players[firstToAct].folded)) {
+        firstToAct = this.nextSeatIndex(firstToAct, p => !p.eliminated && !p.folded && !p.allIn);
+      }
 
       await new Promise(res => setTimeout(res, 1100));
       if (!this.running) return;
@@ -3663,6 +3789,8 @@ const NetworkManager = (() => {
       }
     } else if (msg.type === 'PLAYER_ACTION' && hostGame) {
       hostGame.handleAction(msg.playerId, msg.action, msg.amount);
+    } else if (msg.type === 'PLAYER_RESTART' && hostGame) {
+      hostGame.revivePlayer(msg.playerId, 20000);
     }
   }
 
@@ -3763,6 +3891,13 @@ const NetworkManager = (() => {
     }
   }
 
+  function sendClientRestart() {
+    const hostConn = connections.get('host');
+    if (hostConn) {
+      hostConn.send({ type: 'PLAYER_RESTART', playerId: localPlayer.id });
+    }
+  }
+
   function leaveRoom() {
     if (hostGame) { hostGame.stop(); hostGame = null; }
     connections.forEach(c => { try { c.close(); } catch (e) {} });
@@ -3782,6 +3917,7 @@ const NetworkManager = (() => {
     applyManualSDP,
     triggerCountdown,
     sendClientAction,
+    sendClientRestart,
     leaveRoom,
     isClient: () => mode === 'online_client' || mode === 'manual_client',
     isHost: () => mode === 'online_host' || mode === 'manual_host'
@@ -3819,6 +3955,9 @@ const UIManager = (() => {
   let seatElements = [];
   let timerAnim = null;
   let lastWinningCardIds = [];
+  let balanceClickCount = 0;
+  let balanceTapTimes = [];
+  let endgameMode = 'leave';
 
   function loadBalance() {
     try {
@@ -4218,6 +4357,19 @@ const UIManager = (() => {
     // Обновляем 2D-виджеты карт дилера (слева сверху) и игрока (справа сверху)
     render2DCardsHUD(snap, myId);
 
+    // В онлайн-игре с друзьями показываем кнопку «Начать заново (+$20,000)», если игрок проиграл весь стек
+    const rebuyBtn = document.getElementById('btn-mp-rebuy');
+    if (rebuyBtn) {
+      const isMP = activeTableConfig?.mode === 'mp_host' || activeTableConfig?.mode === 'mp_client';
+      const isBusted = Boolean(
+        me && (
+          me.eliminated ||
+          (me.chips <= 0 && !me.isWinner && (me.folded || snap.street === 'SHOWDOWN'))
+        )
+      );
+      rebuyBtn.style.display = (isMP && isBusted) ? 'inline-flex' : 'none';
+    }
+
     // Показываем панель действий, если сейчас ход локального игрока
     const actionBar = document.getElementById('action-bar');
     const isMyTurn = snap.activeIndex >= 0 && snap.players[snap.activeIndex]?.id === myId;
@@ -4328,49 +4480,60 @@ const UIManager = (() => {
   }
 
   function showHandBanner(text, duration = 2600) {
-    const el = document.getElementById('hand-banner');
-    el.textContent = text;
-    el.classList.add('visible');
-    clearTimeout(el._t);
-    el._t = setTimeout(() => el.classList.remove('visible'), duration);
+    const banner = document.getElementById('hand-banner');
+    if (!banner) return;
+    banner.textContent = text;
+    banner.classList.add('visible');
+    clearTimeout(banner._hideTimer);
+    if (duration > 0) {
+      banner._hideTimer = setTimeout(() => banner.classList.remove('visible'), duration);
+    }
   }
 
   function handleGameEvent(ev, snap) {
     if (!ev) return;
+
     if (ev.type === 'HAND_START') {
       lastWinningCardIds = [];
-      render2DCardsHUD(snap, localPlayerId);
+      const banner = document.getElementById('hand-banner');
+      if (banner) banner.classList.remove('visible');
     } else if (ev.type === 'DEAL_HOLE_CARDS') {
-      lastWinningCardIds = [];
       Scene3D.animateDealHoleCards(snap, localPlayerId);
-      render2DCardsHUD(snap, localPlayerId);
     } else if (ev.type === 'DEAL_COMMUNITY') {
       Scene3D.animateCommunityCards(snap.communityCards);
-      render2DCardsHUD(snap, localPlayerId);
-      showHandBanner(`Открыт ${ev.street === 'FLOP' ? 'Флоп' : ev.street === 'TURN' ? 'Тёрн' : 'Ривер'}`, 1400);
+      const streetTitle = { FLOP: 'ФЛОП', TURN: 'ТЁРН', RIVER: 'РИВЕР' }[ev.street] || ev.street;
+      showHandBanner(streetTitle, 1400);
     } else if (ev.type === 'CHIPS_BET') {
       Scene3D.animateChipBet(ev.seatIdx, ev.amount);
+    } else if (ev.type === 'TURN_START') {
+      const positions = Scene3D.getSeatPositions();
+      const targetX = positions[ev.seatIdx] ? positions[ev.seatIdx].seat.x : 0;
+      Scene3D.triggerDealerAnim('invite', targetX);
+      if (snap && snap.players[ev.seatIdx]?.id === localPlayerId) {
+        AudioEngine.sfx.timerTick();
+      }
     } else if (ev.type === 'PLAYER_FOLD') {
       Scene3D.animateFold(ev.seatIdx);
     } else if (ev.type === 'PLAYER_CHECK') {
       AudioEngine.sfx.check();
     } else if (ev.type === 'GATHER_POT') {
-      Scene3D.animateGatherPot(snap.pot);
-    } else if (ev.type === 'TURN_START') {
-      const pos = Scene3D.getSeatPositions()[ev.seatIdx];
-      if (pos) Scene3D.triggerDealerAnim('invite', pos.seat.x);
-      if (snap.players[ev.seatIdx]?.id === localPlayerId) {
-        AudioEngine.sfx.timerTick();
-      }
+      Scene3D.animateGatherPot(snap ? snap.pot : 0);
     } else if (ev.type === 'SHOWDOWN') {
       lastWinningCardIds = ev.winningCardIds || [];
-      render2DCardsHUD(snap, localPlayerId);
       Scene3D.animateShowdown(snap, ev.winningCardIds, ev.winners, ev.revealAll);
+      render2DCardsHUD(snap, localPlayerId);
       if (ev.winners && ev.winners.length > 0) {
-        const msg = ev.winners.map(w => `🏆 ${w.name} выиграл ${fmt(w.amount)} (${w.handName})`).join(' | ');
-        showHandBanner(msg, 3800);
+        const text = ev.winners
+          .map(w => `🏆 ${w.name} +${fmt(w.amount)} (${w.handName})`)
+          .join('  •  ');
+        showHandBanner(text, 3800);
       }
+    } else if (ev.type === 'PLAYER_REBUY') {
+      closeModal('endgame-modal');
+      AudioEngine.sfx.bonus();
+      toast(`🔄 ${ev.name} начал заново (+${fmt(ev.amount)})!`);
     } else if (ev.type === 'HUMAN_BUSTED') {
+      endgameMode = 'leave';
       document.getElementById('endgame-title').textContent = 'Фишки закончились';
       document.getElementById('endgame-desc').textContent =
         activeTableConfig?.mode === 'cash' && balance < TABLES[0].buyIn
@@ -4379,16 +4542,58 @@ const UIManager = (() => {
       document.getElementById('btn-endgame-action').textContent = 'В меню';
       openModal('endgame-modal');
     } else if (ev.type === 'TABLE_FINISHED') {
-      document.getElementById('endgame-title').textContent = '🏆 Победа за столом!';
-      document.getElementById('endgame-desc').textContent = ev.winner
-        ? `${ev.winner.name} собрал все фишки стола (${fmt(ev.winner.chips)})!`
-        : 'Партия завершена.';
-      document.getElementById('btn-endgame-action').textContent = 'Забрать выигрыш';
-      openModal('endgame-modal');
+      const isMP = activeTableConfig?.mode === 'mp_host' || activeTableConfig?.mode === 'mp_client';
+      const me = snap?.players?.find(p => p.id === localPlayerId);
+      if (isMP && me && (me.chips <= 0 || me.eliminated)) {
+        endgameMode = 'mp_restart';
+        document.getElementById('endgame-title').textContent = 'Баланс обнулился';
+        document.getElementById('endgame-desc').textContent =
+          'Вы проиграли все фишки за этим столом. Нажмите «Начать заново», чтобы получить +$20,000 и продолжить игру с друзьями!';
+        document.getElementById('btn-endgame-action').textContent = '🔄 Начать заново (+$20,000)';
+        openModal('endgame-modal');
+      } else {
+        endgameMode = 'leave';
+        document.getElementById('endgame-title').textContent = '🏆 Победа за столом!';
+        document.getElementById('endgame-desc').textContent = ev.winner
+          ? `${ev.winner.name} собрал все фишки стола (${fmt(ev.winner.chips)})!`
+          : 'Партия завершена.';
+        document.getElementById('btn-endgame-action').textContent = isMP ? 'В меню' : 'Забрать выигрыш';
+        openModal('endgame-modal');
+      }
     }
   }
 
+  function requestMultiplayerRestart() {
+    closeModal('endgame-modal');
+    const rebuyBtn = document.getElementById('btn-mp-rebuy');
+    if (rebuyBtn) rebuyBtn.style.display = 'none';
+
+    if (NetworkManager.isClient()) {
+      NetworkManager.sendClientRestart();
+    } else if (currentGame) {
+      currentGame.revivePlayer(localPlayerId, 20000);
+    }
+  }
+
+  function confirmSecretBalance() {
+    const inp = document.getElementById('secret-balance-input');
+    const raw = Number(inp ? inp.value : NaN);
+    if (!Number.isFinite(raw) || raw < 0) {
+      toast('Введите корректную сумму!');
+      return;
+    }
+    const newBal = Math.min(999999999, Math.floor(raw));
+    saveBalance(newBal);
+    AudioEngine.sfx.bonus();
+    closeModal('secret-balance-modal');
+    toast(`💎 Баланс установлен: ${fmt(newBal)}`);
+  }
+
   function handleEndgameAction() {
+    if (endgameMode === 'mp_restart') {
+      requestMultiplayerRestart();
+      return;
+    }
     closeModal('endgame-modal');
     leaveTable();
   }
@@ -4422,6 +4627,59 @@ const UIManager = (() => {
     buildRulesTable();
 
     document.getElementById('btn-bonus').addEventListener('click', claimBonus);
+
+    // Скрытые читы на балансе в главном меню:
+    // 1) Ритм: 2 быстрых нажатия (<= 350 мс) + 4 средних касания (350–1600 мс)
+    // 2) Либо 21 нажатие подряд
+    const openSecretBalanceModal = () => {
+      balanceClickCount = 0;
+      balanceTapTimes = [];
+      const inp = document.getElementById('secret-balance-input');
+      if (inp) inp.value = String(balance);
+      openModal('secret-balance-modal');
+    };
+
+    const balWidget = document.getElementById('balance-widget');
+    if (balWidget) {
+      balWidget.addEventListener('pointerdown', (e) => {
+        if (e.isPrimary === false || e.target.closest('#btn-bonus')) return;
+
+        const now = Date.now();
+        if (balanceTapTimes.length > 0 && now - balanceTapTimes[balanceTapTimes.length - 1] > 2200) {
+          balanceTapTimes = [];
+        }
+        balanceTapTimes.push(now);
+        if (balanceTapTimes.length > 6) balanceTapTimes.shift();
+
+        if (balanceTapTimes.length === 6) {
+          const d0 = balanceTapTimes[1] - balanceTapTimes[0]; // интервал между 1-м и 2-м касанием (быстро)
+          const d1 = balanceTapTimes[2] - balanceTapTimes[1]; // 1-е среднее
+          const d2 = balanceTapTimes[3] - balanceTapTimes[2]; // 2-е среднее
+          const d3 = balanceTapTimes[4] - balanceTapTimes[3]; // 3-е среднее
+          const d4 = balanceTapTimes[5] - balanceTapTimes[4]; // 4-е среднее
+
+          const isFastPair = d0 <= 350;
+          const isFourMedium = [d1, d2, d3, d4].every(d => d > 350 && d <= 1600);
+
+          if (isFastPair && isFourMedium) {
+            openSecretBalanceModal();
+            return;
+          }
+        }
+
+        balanceClickCount++;
+        if (balanceClickCount >= 21) {
+          openSecretBalanceModal();
+        }
+      });
+    }
+    const secretInp = document.getElementById('secret-balance-input');
+    if (secretInp) {
+      secretInp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') confirmSecretBalance();
+      });
+    }
+
     document.getElementById('custom-ai-count').addEventListener('input', e => {
       const n = Number(e.target.value);
       document.getElementById('custom-ai-count-val').textContent = `${n} (всего ${n + 1} мест)`;
@@ -4478,9 +4736,12 @@ const UIManager = (() => {
     applyNetworkEvent,
     openLobby,
     renderLobbyPlayers,
+    updateSeatOverlayPositions,
     onBetSliderChange,
     setQuickBet,
     sendHumanAction,
+    requestMultiplayerRestart,
+    confirmSecretBalance,
     handleEndgameAction,
     leaveTable
   };
